@@ -10,8 +10,8 @@ const env: ApiEnv = {
   API_PORT: 5050,
   CORS_ORIGIN: 'http://localhost:3000',
   LOG_LEVEL: 'error',
-  DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/lead_onslaught',
-  DIRECT_URL: 'postgresql://postgres:postgres@localhost:5433/lead_onslaught',
+  DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_onslaught',
+  DIRECT_URL: 'postgresql://postgres:postgres@localhost:5434/lead_onslaught',
 };
 
 describe('buildServer', () => {

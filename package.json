@@ -7,7 +7,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev --parallel --filter=@lead-onslaught/web --filter=@lead-onslaught/api --filter=@lead-onslaught/worker",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -17,6 +17,7 @@
     "test:e2e": "turbo run test:e2e",
     "db:generate": "pnpm --filter @lead-onslaught/db prisma:generate",
     "db:migrate": "pnpm --filter @lead-onslaught/db prisma:migrate",
+    "db:migrate:dev": "pnpm --filter @lead-onslaught/db prisma:migrate:dev",
     "db:seed": "pnpm --filter @lead-onslaught/db prisma:seed",
     "db:studio": "pnpm --filter @lead-onslaught/db prisma:studio",
     "dev:infra": "docker compose -f infra/docker/docker-compose.local.yml up -d",

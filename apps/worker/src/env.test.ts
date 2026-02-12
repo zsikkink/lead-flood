@@ -5,7 +5,7 @@ import { loadWorkerEnv } from './env.js';
 describe('loadWorkerEnv', () => {
   it('parses required worker variables', () => {
     const env = loadWorkerEnv({
-      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/lead_onslaught',
+      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_onslaught',
       APP_ENV: 'test',
       LOG_LEVEL: 'debug',
       PG_BOSS_SCHEMA: 'pgboss',

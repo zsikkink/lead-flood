@@ -152,6 +152,7 @@ Create:
 - `apps/api/.env.local`
 - `apps/worker/.env.local`
 - `apps/web/.env.local`
+- `packages/db/.env`
 
 Use this baseline:
 
@@ -159,8 +160,8 @@ Use this baseline:
 |---|---|---|---|
 | `NODE_ENV` | Runtime mode | `development` | Yes |
 | `APP_ENV` | Environment marker | `local` | Yes |
-| `DATABASE_URL` | Prisma + app DB connection | `postgresql://postgres:postgres@localhost:5433/lead_onslaught` | Yes |
-| `DIRECT_URL` | Direct DB URL for Prisma migrations | `postgresql://postgres:postgres@localhost:5433/lead_onslaught` | Yes |
+| `DATABASE_URL` | Prisma + app DB connection | `postgresql://postgres:postgres@localhost:5434/lead_onslaught` | Yes |
+| `DIRECT_URL` | Direct DB URL for Prisma migrations | `postgresql://postgres:postgres@localhost:5434/lead_onslaught` | Yes |
 | `API_PORT` | API port | `5050` | Yes |
 | `WEB_PORT` | Web port | `3000` | Yes |
 | `CORS_ORIGIN` | Allowed web origin | `http://localhost:3000` | Yes |
@@ -185,7 +186,7 @@ services:
     image: postgres:16
     container_name: lead-onslaught-postgres
     ports:
-      - "5433:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -223,6 +224,7 @@ docker compose -f infra/docker/docker-compose.local.yml up -d
 cp apps/api/.env.example apps/api/.env.local
 cp apps/worker/.env.example apps/worker/.env.local
 cp apps/web/.env.example apps/web/.env.local
+cp packages/db/.env.example packages/db/.env
 
 # 4) Run migrations + seed
 pnpm db:migrate
