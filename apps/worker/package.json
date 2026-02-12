@@ -10,7 +10,7 @@
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm test:unit",
-    "test:unit": "vitest run src"
+    "test:unit": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5434/lead_flood} DIRECT_URL=${DIRECT_URL:-postgresql://postgres:postgres@localhost:5434/lead_flood} vitest run src"
   },
   "dependencies": {
     "@lead-flood/db": "workspace:*",
