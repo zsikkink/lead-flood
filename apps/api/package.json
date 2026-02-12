@@ -18,6 +18,7 @@
     "@lead-onslaught/db": "workspace:*",
     "@lead-onslaught/observability": "workspace:*",
     "fastify": "^5.2.1",
+    "pg-boss": "^10.3.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

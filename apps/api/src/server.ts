@@ -1,19 +1,63 @@
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import {
+  CreateLeadRequestSchema,
+  CreateLeadResponseSchema,
   ErrorResponseSchema,
+  GetJobStatusResponseSchema,
+  GetLeadResponseSchema,
   HealthResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
+  type CreateLeadRequest,
+  type JobStatus,
+  type LeadStatus,
   ReadyResponseSchema,
 } from '@lead-onslaught/contracts';
 
 import type { ApiEnv } from './env.js';
 
+export class LeadAlreadyExistsError extends Error {
+  constructor(message = 'Lead already exists') {
+    super(message);
+    this.name = 'LeadAlreadyExistsError';
+  }
+}
+
+export interface LeadRecord {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  source: string;
+  status: LeadStatus;
+  enrichmentData: unknown | null;
+  error: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface JobRecord {
+  id: string;
+  type: string;
+  status: JobStatus;
+  attempts: number;
+  leadId: string | null;
+  result: unknown | null;
+  error: string | null;
+  createdAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  updatedAt: Date;
+}
+
 export interface BuildServerOptions {
   env: ApiEnv;
   logger: FastifyBaseLogger;
   checkDatabaseHealth: () => Promise<boolean>;
+  createLeadAndEnqueue: (input: CreateLeadRequest) => Promise<{ leadId: string; jobId: string }>;
+  getLeadById: (leadId: string) => Promise<LeadRecord | null>;
+  getJobById: (jobId: string) => Promise<JobRecord | null>;
 }
 
 export function buildServer(options: BuildServerOptions): FastifyInstance {
@@ -72,6 +116,93 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
         firstName: 'Demo',
         lastName: 'User',
       },
+    });
+  });
+
+  app.post('/v1/leads', async (request, reply) => {
+    const parsedRequest = CreateLeadRequestSchema.safeParse(request.body);
+
+    if (!parsedRequest.success) {
+      reply.status(400);
+      return ErrorResponseSchema.parse({
+        error: 'Invalid lead payload',
+        requestId: request.id,
+      });
+    }
+
+    try {
+      const created = await options.createLeadAndEnqueue(parsedRequest.data);
+      return CreateLeadResponseSchema.parse(created);
+    } catch (error: unknown) {
+      if (error instanceof LeadAlreadyExistsError) {
+        reply.status(409);
+        return ErrorResponseSchema.parse({
+          error: error.message,
+          requestId: request.id,
+        });
+      }
+
+      throw error;
+    }
+  });
+
+  app.get('/v1/leads/:id', async (request, reply) => {
+    const params = request.params as { id?: string };
+    const leadId = params.id;
+
+    if (!leadId) {
+      reply.status(400);
+      return ErrorResponseSchema.parse({
+        error: 'Lead id is required',
+        requestId: request.id,
+      });
+    }
+
+    const lead = await options.getLeadById(leadId);
+
+    if (!lead) {
+      reply.status(404);
+      return ErrorResponseSchema.parse({
+        error: 'Lead not found',
+        requestId: request.id,
+      });
+    }
+
+    return GetLeadResponseSchema.parse({
+      ...lead,
+      createdAt: lead.createdAt.toISOString(),
+      updatedAt: lead.updatedAt.toISOString(),
+    });
+  });
+
+  app.get('/v1/jobs/:id', async (request, reply) => {
+    const params = request.params as { id?: string };
+    const jobId = params.id;
+
+    if (!jobId) {
+      reply.status(400);
+      return ErrorResponseSchema.parse({
+        error: 'Job id is required',
+        requestId: request.id,
+      });
+    }
+
+    const job = await options.getJobById(jobId);
+
+    if (!job) {
+      reply.status(404);
+      return ErrorResponseSchema.parse({
+        error: 'Job not found',
+        requestId: request.id,
+      });
+    }
+
+    return GetJobStatusResponseSchema.parse({
+      ...job,
+      createdAt: job.createdAt.toISOString(),
+      startedAt: job.startedAt?.toISOString() ?? null,
+      finishedAt: job.finishedAt?.toISOString() ?? null,
+      updatedAt: job.updatedAt.toISOString(),
     });
   });
 

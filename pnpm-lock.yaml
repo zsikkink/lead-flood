@@ -53,6 +53,9 @@ importers:
       fastify:
         specifier: ^5.2.1
         version: 5.7.4
+      pg-boss:
+        specifier: ^10.3.0
+        version: 10.4.2
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -88,6 +91,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@lead-onslaught/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@lead-onslaught/observability':
         specifier: workspace:*
         version: link:../../packages/observability

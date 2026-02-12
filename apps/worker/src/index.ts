@@ -4,6 +4,7 @@ import { createLogger } from '@lead-onslaught/observability';
 
 import { loadWorkerEnv } from './env.js';
 import { handleHeartbeatJob, type HeartbeatJobPayload } from './jobs/heartbeat.job.js';
+import { handleLeadEnrichJob, type LeadEnrichJobPayload } from './jobs/lead-enrich.job.js';
 
 async function main(): Promise<void> {
   const env = loadWorkerEnv(process.env);
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
   logger.info('Worker started');
 
   await boss.createQueue('system.heartbeat');
+  await boss.createQueue('lead.enrich.stub');
   await boss.schedule(
     'system.heartbeat',
     '*/1 * * * *',
@@ -36,6 +38,12 @@ async function main(): Promise<void> {
   await boss.work<HeartbeatJobPayload>('system.heartbeat', async (jobs) => {
     for (const job of jobs) {
       await handleHeartbeatJob(logger, job);
+    }
+  });
+
+  await boss.work<LeadEnrichJobPayload>('lead.enrich.stub', async (jobs) => {
+    for (const job of jobs) {
+      await handleLeadEnrichJob(logger, job);
     }
   });
 

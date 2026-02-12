@@ -10,6 +10,7 @@ const env: ApiEnv = {
   API_PORT: 5050,
   CORS_ORIGIN: 'http://localhost:3000',
   LOG_LEVEL: 'error',
+  PG_BOSS_SCHEMA: 'pgboss',
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_onslaught',
   DIRECT_URL: 'postgresql://postgres:postgres@localhost:5434/lead_onslaught',
 };
@@ -20,6 +21,9 @@ describe('GET /ready', () => {
       env,
       logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
       checkDatabaseHealth: async () => false,
+      createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
+      getLeadById: async () => null,
+      getJobById: async () => null,
     });
 
     const response = await server.inject({ method: 'GET', url: '/ready' });
@@ -34,6 +38,9 @@ describe('GET /ready', () => {
       env,
       logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
       checkDatabaseHealth: async () => true,
+      createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
+      getLeadById: async () => null,
+      getJobById: async () => null,
     });
 
     const response = await server.inject({ method: 'GET', url: '/ready' });
