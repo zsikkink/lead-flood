@@ -745,10 +745,19 @@ Create these as GitHub Issues with labels:
 
 ### Release process (staging -> production)
 1. Merge PR to `main` (all checks green).
-2. Auto-deploy to staging.
-3. Run staging smoke suite.
-4. Manual approval step for production deploy.
-5. Run post-deploy smoke checks and verify dashboards.
+2. `CI` workflow completes successfully.
+3. `Deploy` workflow publishes `staging-*` images to GHCR and triggers staging deploy webhook (if configured).
+4. Run staging smoke suite (`STAGING_SMOKE_URL` hook in workflow).
+5. Manual `workflow_dispatch` of `Deploy` with `environment=production`.
+6. Production environment approval gate (GitHub environment protection).
+7. `Deploy` workflow publishes `production-*` images and triggers production deploy webhook (if configured).
+8. Run post-deploy smoke checks and verify dashboards.
+
+Required deploy secrets:
+- `STAGING_DEPLOY_WEBHOOK`
+- `STAGING_SMOKE_URL`
+- `PRODUCTION_DEPLOY_WEBHOOK`
+- `PRODUCTION_SMOKE_URL`
 
 ### Rollback plan
 - If release fails health checks:
