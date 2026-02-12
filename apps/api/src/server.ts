@@ -1,6 +1,12 @@
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
-import { ErrorResponseSchema, HealthResponseSchema, ReadyResponseSchema } from '@lead-onslaught/contracts';
+import {
+  ErrorResponseSchema,
+  HealthResponseSchema,
+  LoginRequestSchema,
+  LoginResponseSchema,
+  ReadyResponseSchema,
+} from '@lead-onslaught/contracts';
 
 import type { ApiEnv } from './env.js';
 
@@ -15,11 +21,18 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     logger: false,
     loggerInstance: options.logger,
     disableRequestLogging: false,
+    requestIdHeader: 'x-request-id',
+    requestIdLogLabel: 'requestId',
   });
 
   app.register(cors, {
     origin: options.env.CORS_ORIGIN,
     credentials: true,
+  });
+
+  app.addHook('onSend', (request, reply, payload, done) => {
+    reply.header('x-request-id', request.id);
+    done(null, payload);
   });
 
   app.get('/health', async () => {
@@ -35,6 +48,31 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     }
 
     return ReadyResponseSchema.parse({ status: 'ready', db: 'ok' });
+  });
+
+  app.post('/v1/auth/login', async (request, reply) => {
+    const parsedRequest = LoginRequestSchema.safeParse(request.body);
+
+    if (!parsedRequest.success) {
+      reply.status(400);
+      return ErrorResponseSchema.parse({
+        error: 'Invalid login payload',
+        requestId: request.id,
+      });
+    }
+
+    return LoginResponseSchema.parse({
+      tokenType: 'Bearer',
+      accessToken: 'dev-access-token',
+      refreshToken: 'dev-refresh-token',
+      expiresInSeconds: 3600,
+      user: {
+        id: 'dev-user',
+        email: parsedRequest.data.email,
+        firstName: 'Demo',
+        lastName: 'User',
+      },
+    });
   });
 
   app.setNotFoundHandler((request, reply) => {
