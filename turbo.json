@@ -2,6 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
@@ -14,23 +15,23 @@
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": ["^typecheck"],
+      "dependsOn": ["^build", "^typecheck"],
       "outputs": []
     },
     "test": {
-      "dependsOn": ["^test"],
+      "dependsOn": ["^build", "^test"],
       "outputs": ["coverage/**"]
     },
     "test:unit": {
-      "dependsOn": ["^test:unit"],
+      "dependsOn": ["^build", "^test:unit"],
       "outputs": ["coverage/**"]
     },
     "test:integration": {
-      "dependsOn": ["^test:integration"],
+      "dependsOn": ["^build", "^test:integration"],
       "outputs": ["coverage/**"]
     },
     "test:e2e": {
-      "dependsOn": ["^test:e2e"],
+      "dependsOn": ["^build", "^test:e2e"],
       "outputs": ["playwright-report/**"]
     }
   }
