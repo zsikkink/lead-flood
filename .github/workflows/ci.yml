@@ -40,3 +40,81 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build-and-test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lead_flood
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lead_flood"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5434/lead_flood
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5434/lead_flood
+      APP_ENV: ci
+      NODE_ENV: production
+      API_PORT: 5050
+      CORS_ORIGIN: http://localhost:3000
+      LOG_LEVEL: info
+      PG_BOSS_SCHEMA: pgboss
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: Production API smoke test
+        run: |
+          pnpm --filter @lead-flood/api start > api-smoke.log 2>&1 &
+          API_PID=$!
+          cleanup() {
+            if ps -p "$API_PID" > /dev/null 2>&1; then
+              kill "$API_PID"
+              wait "$API_PID" || true
+            fi
+          }
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${API_PORT}/health" > /dev/null; then
+              exit 0
+            fi
+            if ! ps -p "$API_PID" > /dev/null 2>&1; then
+              echo "API process exited before health endpoint became ready"
+              cat api-smoke.log
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "API health check timed out"
+          cat api-smoke.log
+          exit 1
