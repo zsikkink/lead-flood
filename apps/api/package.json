@@ -1,5 +1,5 @@
 {
-  "name": "@lead-onslaught/api",
+  "name": "@lead-flood/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,9 +14,9 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
-    "@lead-onslaught/contracts": "workspace:*",
-    "@lead-onslaught/db": "workspace:*",
-    "@lead-onslaught/observability": "workspace:*",
+    "@lead-flood/contracts": "workspace:*",
+    "@lead-flood/db": "workspace:*",
+    "@lead-flood/observability": "workspace:*",
     "fastify": "^5.2.1",
     "pg-boss": "^10.3.0",
     "zod": "^3.24.1"

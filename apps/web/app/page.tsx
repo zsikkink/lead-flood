@@ -7,7 +7,7 @@ import {
   GetLeadResponseSchema,
   type GetJobStatusResponse,
   type GetLeadResponse,
-} from '@lead-onslaught/contracts';
+} from '@lead-flood/contracts';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { getWebEnv } from '../src/lib/env';
@@ -135,7 +135,7 @@ export default function HomePage() {
 
   return (
     <main style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: '48rem' }}>
-      <h1>Lead Onslaught</h1>
+      <h1>Lead Flood</h1>
       <p>Walking skeleton flow: web to API to DB to worker and back to DB.</p>
       <p>
         API Base URL: <code>{apiBaseUrl}</code>

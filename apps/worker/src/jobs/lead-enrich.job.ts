@@ -1,4 +1,4 @@
-import { prisma } from '@lead-onslaught/db';
+import { prisma } from '@lead-flood/db';
 import type { Job } from 'pg-boss';
 
 export interface LeadEnrichJobPayload {

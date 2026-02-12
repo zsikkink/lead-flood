@@ -13,7 +13,7 @@ import {
   type JobStatus,
   type LeadStatus,
   ReadyResponseSchema,
-} from '@lead-onslaught/contracts';
+} from '@lead-flood/contracts';
 
 import type { ApiEnv } from './env.js';
 

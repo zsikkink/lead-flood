@@ -1,7 +1,7 @@
 import PgBoss from 'pg-boss';
 
-import { Prisma, prisma } from '@lead-onslaught/db';
-import { createLogger } from '@lead-onslaught/observability';
+import { Prisma, prisma } from '@lead-flood/db';
+import { createLogger } from '@lead-flood/observability';
 
 import { loadApiEnv } from './env.js';
 import { buildServer, LeadAlreadyExistsError } from './server.js';

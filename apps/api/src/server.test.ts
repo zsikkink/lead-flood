@@ -1,4 +1,4 @@
-import { createLogger } from '@lead-onslaught/observability';
+import { createLogger } from '@lead-flood/observability';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from './server.js';
@@ -11,8 +11,8 @@ const env: ApiEnv = {
   CORS_ORIGIN: 'http://localhost:3000',
   LOG_LEVEL: 'error',
   PG_BOSS_SCHEMA: 'pgboss',
-  DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_onslaught',
-  DIRECT_URL: 'postgresql://postgres:postgres@localhost:5434/lead_onslaught',
+  DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_flood',
+  DIRECT_URL: 'postgresql://postgres:postgres@localhost:5434/lead_flood',
 };
 
 const makeDefaultOptions = () => ({
@@ -64,7 +64,7 @@ describe('buildServer', () => {
       method: 'POST',
       url: '/v1/auth/login',
       payload: {
-        email: 'demo@lead-onslaught.local',
+        email: 'demo@lead-flood.local',
         password: 'password',
       },
     });
@@ -77,7 +77,7 @@ describe('buildServer', () => {
       expiresInSeconds: 3600,
       user: {
         id: 'dev-user',
-        email: 'demo@lead-onslaught.local',
+        email: 'demo@lead-flood.local',
         firstName: 'Demo',
         lastName: 'User',
       },

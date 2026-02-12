@@ -5,13 +5,13 @@ import { loadWorkerEnv } from './env.js';
 describe('loadWorkerEnv', () => {
   it('parses required worker variables', () => {
     const env = loadWorkerEnv({
-      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_onslaught',
+      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_flood',
       APP_ENV: 'test',
       LOG_LEVEL: 'debug',
       PG_BOSS_SCHEMA: 'pgboss',
     });
 
-    expect(env.DATABASE_URL).toContain('lead_onslaught');
+    expect(env.DATABASE_URL).toContain('lead_flood');
     expect(env.APP_ENV).toBe('test');
     expect(env.LOG_LEVEL).toBe('debug');
   });

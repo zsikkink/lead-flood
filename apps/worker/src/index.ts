@@ -1,6 +1,6 @@
 import PgBoss from 'pg-boss';
 
-import { createLogger } from '@lead-onslaught/observability';
+import { createLogger } from '@lead-flood/observability';
 
 import { loadWorkerEnv } from './env.js';
 import { handleHeartbeatJob, type HeartbeatJobPayload } from './jobs/heartbeat.job.js';

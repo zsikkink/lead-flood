@@ -5,11 +5,11 @@ import { LoginRequestSchema, LoginResponseSchema } from './auth.contract.js';
 describe('LoginRequestSchema', () => {
   it('accepts a valid payload', () => {
     const parsed = LoginRequestSchema.parse({
-      email: 'demo@lead-onslaught.local',
+      email: 'demo@lead-flood.local',
       password: 'password',
     });
 
-    expect(parsed.email).toBe('demo@lead-onslaught.local');
+    expect(parsed.email).toBe('demo@lead-flood.local');
   });
 
   it('rejects invalid email', () => {
@@ -31,7 +31,7 @@ describe('LoginResponseSchema', () => {
       expiresInSeconds: 3600,
       user: {
         id: 'user_1',
-        email: 'demo@lead-onslaught.local',
+        email: 'demo@lead-flood.local',
         firstName: 'Demo',
         lastName: 'User',
       },

@@ -1,4 +1,4 @@
-# Lead Onslaught Engineering Plan / Build Guide (Greenfield)
+# Lead Flood Engineering Plan / Build Guide (Greenfield)
 
 Status: Draft for implementation kickoff  
 Owner: Zack Sikkink
@@ -7,7 +7,7 @@ Last updated: 2026-02-12
 ## 1) Project overview
 
 ### Problem this system solves
-Lead Onslaught helps small-to-mid-market sales teams find qualified prospects, enrich contact data, run multi-step outreach, and manage inbound/outbound conversations in one workflow.
+Lead Flood helps small-to-mid-market sales teams find qualified prospects, enrich contact data, run multi-step outreach, and manage inbound/outbound conversations in one workflow.
 
 ### Core user flows (MVP)
 1. ICP setup and search run
@@ -86,7 +86,7 @@ Why:
 
 ### Target folder tree
 ```text
-lead-onslaught/
+lead-flood/
   apps/
     web/                         # Next.js app (UI routes, pages, components)
     api/                         # Fastify app (HTTP API modules)
@@ -160,8 +160,8 @@ Use this baseline:
 |---|---|---|---|
 | `NODE_ENV` | Runtime mode | `development` | Yes |
 | `APP_ENV` | Environment marker | `local` | Yes |
-| `DATABASE_URL` | Prisma + app DB connection | `postgresql://postgres:postgres@localhost:5434/lead_onslaught` | Yes |
-| `DIRECT_URL` | Direct DB URL for Prisma migrations | `postgresql://postgres:postgres@localhost:5434/lead_onslaught` | Yes |
+| `DATABASE_URL` | Prisma + app DB connection | `postgresql://postgres:postgres@localhost:5434/lead_flood` | Yes |
+| `DIRECT_URL` | Direct DB URL for Prisma migrations | `postgresql://postgres:postgres@localhost:5434/lead_flood` | Yes |
 | `API_PORT` | API port | `5050` | Yes |
 | `WEB_PORT` | Web port | `3000` | Yes |
 | `CORS_ORIGIN` | Allowed web origin | `http://localhost:3000` | Yes |
@@ -184,24 +184,24 @@ File: `infra/docker/docker-compose.local.yml`
 services:
   postgres:
     image: postgres:16
-    container_name: lead-onslaught-postgres
+    container_name: lead-flood-postgres
     ports:
       - "5434:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: lead_onslaught
+      POSTGRES_DB: lead_flood
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d lead_onslaught"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lead_flood"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   mailhog:
     image: mailhog/mailhog:latest
-    container_name: lead-onslaught-mailhog
+    container_name: lead-flood-mailhog
     ports:
       - "8025:8025"
       - "1025:1025"
@@ -247,7 +247,7 @@ Expected local endpoints:
   ```
 - Prisma client mismatch after schema change:
   ```bash
-  pnpm --filter @lead-onslaught/db prisma generate
+  pnpm --filter @lead-flood/db prisma generate
   ```
 - Port already in use:
   ```bash
@@ -256,7 +256,7 @@ Expected local endpoints:
   ```
 - Worker not processing:
   ```bash
-  pnpm --filter @lead-onslaught/worker dev
+  pnpm --filter @lead-flood/worker dev
   ```
 - Contract drift:
   ```bash

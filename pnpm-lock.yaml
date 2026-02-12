@@ -41,13 +41,13 @@ importers:
       '@fastify/cors':
         specifier: ^10.0.1
         version: 10.1.0
-      '@lead-onslaught/contracts':
+      '@lead-flood/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@lead-onslaught/db':
+      '@lead-flood/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@lead-onslaught/observability':
+      '@lead-flood/observability':
         specifier: workspace:*
         version: link:../../packages/observability
       fastify:
@@ -66,7 +66,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@lead-onslaught/contracts':
+      '@lead-flood/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       next:
@@ -91,10 +91,10 @@ importers:
 
   apps/worker:
     dependencies:
-      '@lead-onslaught/db':
+      '@lead-flood/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@lead-onslaught/observability':
+      '@lead-flood/observability':
         specifier: workspace:*
         version: link:../../packages/observability
       pg-boss:
