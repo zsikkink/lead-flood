@@ -176,6 +176,7 @@ Use this baseline:
 | `HUNTER_API_KEY` | Enrichment provider key | `TODO(staging-secret)` | No |
 | `TRENGO_API_KEY` | Messaging provider key | `TODO(staging-secret)` | No |
 | `RATE_LIMIT_RPM` | API rate limit requests per minute | `120` | Yes |
+| `DEMO_USER_PASSWORD` | Seed password for `demo@lead-flood.local` | `demo-password` | No (local seed only) |
 
 ### Docker Compose services
 File: `infra/docker/docker-compose.local.yml`
