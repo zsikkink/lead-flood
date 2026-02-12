@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum LeadStatus {
+  new
+  processing
+  enriched
+  failed
+}
+
+enum JobStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  firstName   String
+  lastName    String
+  passwordHash String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  sessions    Session[]
+
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Lead {
+  id             String        @id @default(cuid())
+  firstName      String
+  lastName       String
+  email          String        @unique
+  source         String
+  status         LeadStatus    @default(new)
+  enrichmentData Json?
+  error          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  jobs           JobExecution[]
+
+  @@index([status])
+  @@index([source])
+}
+
+model JobExecution {
+  id         String    @id @default(cuid())
+  type       String
+  status     JobStatus @default(queued)
+  attempts   Int       @default(0)
+  payload    Json
+  result     Json?
+  error      String?
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([leadId])
+}

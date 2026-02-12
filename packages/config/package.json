@@ -1,0 +1,16 @@
+{
+  "name": "@lead-onslaught/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "tsconfig.base.json"
+  ],
+  "scripts": {
+    "build": "echo 'config package has no build output'",
+    "lint": "echo 'config package has no lint targets'",
+    "typecheck": "echo 'config package has no typecheck targets'",
+    "test": "echo 'config package has no tests'",
+    "test:unit": "echo 'config package has no unit tests'"
+  }
+}
