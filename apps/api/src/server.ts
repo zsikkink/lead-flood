@@ -10,6 +10,8 @@ import {
   LoginRequestSchema,
   LoginResponseSchema,
   type CreateLeadRequest,
+  type LoginRequest,
+  type LoginResponse,
   type JobStatus,
   type LeadStatus,
   ReadyResponseSchema,
@@ -55,6 +57,7 @@ export interface BuildServerOptions {
   env: ApiEnv;
   logger: FastifyBaseLogger;
   checkDatabaseHealth: () => Promise<boolean>;
+  authenticateUser: (input: LoginRequest) => Promise<LoginResponse | null>;
   createLeadAndEnqueue: (input: CreateLeadRequest) => Promise<{ leadId: string; jobId: string }>;
   getLeadById: (leadId: string) => Promise<LeadRecord | null>;
   getJobById: (jobId: string) => Promise<JobRecord | null>;
@@ -105,18 +108,16 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       });
     }
 
-    return LoginResponseSchema.parse({
-      tokenType: 'Bearer',
-      accessToken: 'dev-access-token',
-      refreshToken: 'dev-refresh-token',
-      expiresInSeconds: 3600,
-      user: {
-        id: 'dev-user',
-        email: parsedRequest.data.email,
-        firstName: 'Demo',
-        lastName: 'User',
-      },
-    });
+    const login = await options.authenticateUser(parsedRequest.data);
+    if (!login) {
+      reply.status(401);
+      return ErrorResponseSchema.parse({
+        error: 'Invalid email or password',
+        requestId: request.id,
+      });
+    }
+
+    return LoginResponseSchema.parse(login);
   });
 
   app.post('/v1/leads', async (request, reply) => {

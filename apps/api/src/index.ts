@@ -3,6 +3,7 @@ import PgBoss from 'pg-boss';
 import { Prisma, prisma } from '@lead-flood/db';
 import { createLogger } from '@lead-flood/observability';
 
+import { buildAuthenticateUser } from './auth/service.js';
 import { loadApiEnv } from './env.js';
 import { buildServer, LeadAlreadyExistsError } from './server.js';
 
@@ -33,6 +34,25 @@ async function main(): Promise<void> {
         return false;
       }
     },
+    authenticateUser: buildAuthenticateUser({
+      findUserByEmail: async (email) => {
+        return prisma.user.findUnique({
+          where: { email },
+        });
+      },
+      createSession: async ({ sessionId, userId, refreshToken, expiresAt }) => {
+        await prisma.session.create({
+          data: {
+            id: sessionId,
+            userId,
+            refreshToken,
+            expiresAt,
+          },
+        });
+      },
+      accessTokenSecret: env.JWT_ACCESS_SECRET,
+      refreshTokenSecret: env.JWT_REFRESH_SECRET,
+    }),
     createLeadAndEnqueue: async (input) => {
       try {
         const { lead, jobExecution } = await prisma.$transaction(async (tx) => {

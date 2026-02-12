@@ -1,7 +1,9 @@
 import { createLogger } from '@lead-flood/observability';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { buildServer } from './server.js';
+import { type LoginRequest } from '@lead-flood/contracts';
+
+import { buildServer, type BuildServerOptions } from './server.js';
 import type { ApiEnv } from './env.js';
 
 const env: ApiEnv = {
@@ -10,15 +12,29 @@ const env: ApiEnv = {
   API_PORT: 5050,
   CORS_ORIGIN: 'http://localhost:3000',
   LOG_LEVEL: 'error',
+  JWT_ACCESS_SECRET: 'test-access-secret-test-access-secret',
+  JWT_REFRESH_SECRET: 'test-refresh-secret-test-refresh-secret',
   PG_BOSS_SCHEMA: 'pgboss',
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_flood',
   DIRECT_URL: 'postgresql://postgres:postgres@localhost:5434/lead_flood',
 };
 
-const makeDefaultOptions = () => ({
+const makeDefaultOptions = (): BuildServerOptions => ({
   env,
   logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
   checkDatabaseHealth: async () => true,
+  authenticateUser: async ({ email }: LoginRequest) => ({
+    tokenType: 'Bearer',
+    accessToken: 'test-access-token',
+    refreshToken: 'test-refresh-token',
+    expiresInSeconds: 3600,
+    user: {
+      id: 'user_1',
+      email,
+      firstName: 'Demo',
+      lastName: 'User',
+    },
+  }),
   createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
   getLeadById: async () => null,
   getJobById: async () => null,
@@ -56,7 +72,7 @@ describe('buildServer', () => {
     expect(requestIdHeader).toBe(body.requestId);
   });
 
-  it('returns auth login stub response for valid payload', async () => {
+  it('returns auth login response for valid payload', async () => {
     const server = buildServer(makeDefaultOptions());
     servers.push(server);
 
@@ -72,16 +88,38 @@ describe('buildServer', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       tokenType: 'Bearer',
-      accessToken: 'dev-access-token',
-      refreshToken: 'dev-refresh-token',
+      accessToken: 'test-access-token',
+      refreshToken: 'test-refresh-token',
       expiresInSeconds: 3600,
       user: {
-        id: 'dev-user',
+        id: 'user_1',
         email: 'demo@lead-flood.local',
         firstName: 'Demo',
         lastName: 'User',
       },
     });
+  });
+
+  it('returns 401 for invalid login credentials', async () => {
+    const server = buildServer({
+      ...makeDefaultOptions(),
+      authenticateUser: async () => null,
+    });
+    servers.push(server);
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/v1/auth/login',
+      payload: {
+        email: 'demo@lead-flood.local',
+        password: 'wrong-password',
+      },
+    });
+    const body = response.json() as { error: string; requestId?: string };
+
+    expect(response.statusCode).toBe(401);
+    expect(body.error).toBe('Invalid email or password');
+    expect(response.headers['x-request-id']).toBe(body.requestId);
   });
 
   it('returns 400 for invalid login payload', async () => {
