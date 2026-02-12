@@ -1,0 +1,26 @@
+# Node
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+.next/
+coverage/
+playwright-report/
+.turbo/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS/IDE
+.DS_Store
+.vscode/
+.idea/
