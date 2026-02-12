@@ -22,6 +22,13 @@ enum JobStatus {
   failed
 }
 
+enum OutboxStatus {
+  pending
+  processing
+  sent
+  failed
+}
+
 model User {
   id          String    @id @default(cuid())
   email       String    @unique
@@ -83,4 +90,20 @@ model JobExecution {
   @@index([type])
   @@index([status])
   @@index([leadId])
+}
+
+model OutboxEvent {
+  id            String       @id @default(cuid())
+  type          String
+  payload       Json
+  status        OutboxStatus @default(pending)
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime?
+  lastError     String?
+  processedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([status, createdAt])
+  @@index([nextAttemptAt])
 }

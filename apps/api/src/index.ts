@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     }),
     createLeadAndEnqueue: async (input) => {
       try {
-        const { lead, jobExecution } = await prisma.$transaction(async (tx) => {
+        const { lead, jobExecution, outboxEvent } = await prisma.$transaction(async (tx) => {
           const lead = await tx.lead.create({
             data: {
               firstName: input.firstName,
@@ -78,9 +78,22 @@ async function main(): Promise<void> {
             },
           });
 
+          const outboxEvent = await tx.outboxEvent.create({
+            data: {
+              type: 'lead.enrich.stub',
+              payload: {
+                leadId: lead.id,
+                jobExecutionId: jobExecution.id,
+                source: input.source,
+              },
+              status: 'pending',
+            },
+          });
+
           return {
             lead,
             jobExecution,
+            outboxEvent,
           };
         });
 
@@ -93,34 +106,44 @@ async function main(): Promise<void> {
               source: input.source,
             },
             {
-              singletonKey: `lead.enrich.stub:${lead.id}`,
+              singletonKey: `outbox:${outboxEvent.id}`,
               retryLimit: 3,
               retryDelay: 5,
               retryBackoff: true,
             },
           );
+
+          await prisma.outboxEvent.update({
+            where: { id: outboxEvent.id },
+            data: {
+              status: 'sent',
+              attempts: {
+                increment: 1,
+              },
+              processedAt: new Date(),
+              nextAttemptAt: null,
+              lastError: null,
+            },
+          });
         } catch (error: unknown) {
-          logger.error({ error, leadId: lead.id }, 'Failed to enqueue lead enrichment job');
+          const errorMessage =
+            error instanceof Error ? error.message : 'Failed to enqueue enrichment job';
+          logger.error(
+            { error, leadId: lead.id, outboxEventId: outboxEvent.id },
+            'Immediate queue publish failed; outbox retry will handle dispatch',
+          );
 
-          await prisma.$transaction([
-            prisma.lead.update({
-              where: { id: lead.id },
-              data: {
-                status: 'failed',
-                error: 'Failed to enqueue enrichment job',
+          await prisma.outboxEvent.update({
+            where: { id: outboxEvent.id },
+            data: {
+              status: 'failed',
+              attempts: {
+                increment: 1,
               },
-            }),
-            prisma.jobExecution.update({
-              where: { id: jobExecution.id },
-              data: {
-                status: 'failed',
-                error: 'Failed to enqueue enrichment job',
-                finishedAt: new Date(),
-              },
-            }),
-          ]);
-
-          throw error;
+              lastError: errorMessage,
+              nextAttemptAt: new Date(Date.now() + 5000),
+            },
+          });
         }
 
         return {
