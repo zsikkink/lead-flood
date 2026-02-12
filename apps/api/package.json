@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm test:unit && pnpm test:integration",
     "test:unit": "vitest run src",
-    "test:integration": "vitest run test/integration"
+    "test:integration": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5434/lead_flood} DIRECT_URL=${DIRECT_URL:-postgresql://postgres:postgres@localhost:5434/lead_flood} PG_BOSS_SCHEMA=${PG_BOSS_SCHEMA:-pgboss} vitest run test/integration",
+    "test:e2e": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5434/lead_flood} DIRECT_URL=${DIRECT_URL:-postgresql://postgres:postgres@localhost:5434/lead_flood} PG_BOSS_SCHEMA=${PG_BOSS_SCHEMA:-pgboss} vitest run test/e2e"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
