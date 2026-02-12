@@ -10,6 +10,31 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lead_flood
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lead_flood"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5434/lead_flood
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5434/lead_flood
+      APP_ENV: ci
+      NODE_ENV: test
+      API_PORT: 5050
+      CORS_ORIGIN: http://localhost:3000
+      LOG_LEVEL: info
+      PG_BOSS_SCHEMA: pgboss
+      JWT_ACCESS_SECRET: ci-access-secret-ci-access-secret
+      JWT_REFRESH_SECRET: ci-refresh-secret-ci-refresh-secret
 
     steps:
       - name: Checkout
@@ -29,6 +54,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: Seed database
+        run: pnpm db:seed
+
       - name: Lint
         run: pnpm lint
 
@@ -37,6 +68,9 @@ jobs:
 
       - name: Unit and integration tests
         run: pnpm test
+
+      - name: E2E tests
+        run: pnpm test:e2e
 
       - name: Build
         run: pnpm build
@@ -68,6 +102,8 @@ jobs:
       CORS_ORIGIN: http://localhost:3000
       LOG_LEVEL: info
       PG_BOSS_SCHEMA: pgboss
+      JWT_ACCESS_SECRET: ci-access-secret-ci-access-secret
+      JWT_REFRESH_SECRET: ci-refresh-secret-ci-refresh-secret
 
     steps:
       - name: Checkout
