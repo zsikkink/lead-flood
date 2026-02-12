@@ -27,6 +27,7 @@ enum OutboxStatus {
   processing
   sent
   failed
+  dead_letter
 }
 
 model User {
