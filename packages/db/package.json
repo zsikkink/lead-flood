@@ -17,9 +17,9 @@
   ],
   "scripts": {
     "dev": "tsc -w -p tsconfig.json",
-    "build": "tsc -p tsconfig.json",
+    "build": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json",
     "lint": "eslint src prisma --ext .ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
