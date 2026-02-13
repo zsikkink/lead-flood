@@ -77,22 +77,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-staging-images
     environment: staging
+    env:
+      STAGING_DEPLOY_WEBHOOK: ${{ secrets.STAGING_DEPLOY_WEBHOOK }}
+      STAGING_SMOKE_URL: ${{ secrets.STAGING_SMOKE_URL }}
     steps:
       - name: Trigger staging deployment webhook
-        if: ${{ secrets.STAGING_DEPLOY_WEBHOOK != '' }}
+        if: ${{ env.STAGING_DEPLOY_WEBHOOK != '' }}
         run: curl -fsS -X POST "$STAGING_DEPLOY_WEBHOOK"
-        env:
-          STAGING_DEPLOY_WEBHOOK: ${{ secrets.STAGING_DEPLOY_WEBHOOK }}
 
       - name: Skip deployment trigger when webhook is missing
-        if: ${{ secrets.STAGING_DEPLOY_WEBHOOK == '' }}
+        if: ${{ env.STAGING_DEPLOY_WEBHOOK == '' }}
         run: echo "STAGING_DEPLOY_WEBHOOK is not set; images were published only."
 
       - name: Run staging smoke check
-        if: ${{ secrets.STAGING_SMOKE_URL != '' }}
+        if: ${{ env.STAGING_SMOKE_URL != '' }}
         run: curl -fsS "$STAGING_SMOKE_URL"
-        env:
-          STAGING_SMOKE_URL: ${{ secrets.STAGING_SMOKE_URL }}
 
   build-production-images:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'production' }}
@@ -133,19 +132,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-production-images
     environment: production
+    env:
+      PRODUCTION_DEPLOY_WEBHOOK: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK }}
+      PRODUCTION_SMOKE_URL: ${{ secrets.PRODUCTION_SMOKE_URL }}
     steps:
       - name: Trigger production deployment webhook
-        if: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK != '' }}
+        if: ${{ env.PRODUCTION_DEPLOY_WEBHOOK != '' }}
         run: curl -fsS -X POST "$PRODUCTION_DEPLOY_WEBHOOK"
-        env:
-          PRODUCTION_DEPLOY_WEBHOOK: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK }}
 
       - name: Skip deployment trigger when webhook is missing
-        if: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK == '' }}
+        if: ${{ env.PRODUCTION_DEPLOY_WEBHOOK == '' }}
         run: echo "PRODUCTION_DEPLOY_WEBHOOK is not set; images were published only."
 
       - name: Run production smoke check
-        if: ${{ secrets.PRODUCTION_SMOKE_URL != '' }}
+        if: ${{ env.PRODUCTION_SMOKE_URL != '' }}
         run: curl -fsS "$PRODUCTION_SMOKE_URL"
-        env:
-          PRODUCTION_SMOKE_URL: ${{ secrets.PRODUCTION_SMOKE_URL }}
