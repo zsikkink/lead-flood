@@ -1,6 +1,6 @@
 import type PgBoss from 'pg-boss';
 import { prisma } from '@lead-flood/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dispatchPendingOutboxEvents } from './outbox-dispatcher.js';
 
@@ -39,6 +39,17 @@ describe('dispatchPendingOutboxEvents', () => {
       jobExecutionId: jobExecution.id,
     };
   }
+
+  beforeEach(async () => {
+    await prisma.outboxEvent.deleteMany({
+      where: {
+        type: 'lead.enrich.stub',
+        status: {
+          in: ['pending', 'failed', 'processing'],
+        },
+      },
+    });
+  });
 
   afterEach(async () => {
     if (createdOutboxIds.length > 0) {
