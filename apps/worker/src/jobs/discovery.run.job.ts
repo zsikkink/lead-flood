@@ -3,6 +3,7 @@ import type {
   DiscoveryProvider,
   EnrichmentProvider,
 } from '@lead-flood/contracts';
+import { createHash } from 'node:crypto';
 import { Prisma, prisma } from '@lead-flood/db';
 import {
   ApolloDiscoveryAdapter,
@@ -111,6 +112,18 @@ function deriveLeadName(email: string): { firstName: string; lastName: string } 
 
 function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+}
+
+function computeQueryHash(payload: DiscoveryRunJobPayload, provider: DiscoveryProvider): string {
+  const normalized = JSON.stringify({
+    provider,
+    icpProfileId: payload.icpProfileId ?? null,
+    cursor: payload.cursor ?? null,
+    limit: payload.limit ?? null,
+    filters: payload.filters ?? null,
+  });
+
+  return createHash('sha256').update(normalized).digest('hex');
 }
 
 function toApolloRequest(
@@ -315,6 +328,7 @@ export async function handleDiscoveryRunJob(
   const { runId, correlationId, icpProfileId } = job.data;
   const effectiveCorrelationId = correlationId ?? job.id;
   const selectedProvider = job.data.provider ?? dependencies.defaultProvider;
+  const normalizedIcpProfileId = icpProfileId ?? null;
 
   logger.info(
     {
@@ -341,7 +355,20 @@ export async function handleDiscoveryRunJob(
     return;
   }
 
+  if (!normalizedIcpProfileId) {
+    logger.warn(
+      {
+        jobId: job.id,
+        runId,
+        correlationId: effectiveCorrelationId,
+      },
+      'Skipping discovery.run job because icpProfileId is required',
+    );
+    return;
+  }
+
   const requestedLimit = job.data.limit ?? dependencies.defaultLimit ?? DEFAULT_DISCOVERY_LIMIT;
+  const queryHash = computeQueryHash(job.data, selectedProvider);
 
   try {
     const discoveryResult = await executeDiscoveryProvider(
@@ -356,9 +383,14 @@ export async function handleDiscoveryRunJob(
 
     let createdLeads = 0;
     let enqueuedEnrichmentJobs = 0;
+    let persistedDiscoveryRecords = 0;
 
     for (const discoveredLead of discoveryResult.leads) {
       const fallbackName = deriveLeadName(discoveredLead.email);
+      const existingLead = await prisma.lead.findUnique({
+        where: { email: discoveredLead.email },
+        select: { id: true },
+      });
 
       const lead = await prisma.lead.upsert({
         where: { email: discoveredLead.email },
@@ -378,8 +410,40 @@ export async function handleDiscoveryRunJob(
 
       createdLeads += 1;
 
-      // TODO: Replace JobExecution fallback with LeadDiscoveryRecord once schema is available.
-      const discoveryRecordExecution = await prisma.jobExecution.create({
+      const discoveryRecord = await prisma.leadDiscoveryRecord.upsert({
+        where: {
+          leadId_icpProfileId_provider_providerRecordId: {
+            leadId: lead.id,
+            icpProfileId: normalizedIcpProfileId,
+            provider: selectedProvider,
+            providerRecordId: discoveredLead.providerRecordId,
+          },
+        },
+        create: {
+          leadId: lead.id,
+          icpProfileId: normalizedIcpProfileId,
+          provider: selectedProvider,
+          providerRecordId: discoveredLead.providerRecordId,
+          providerCursor: job.data.cursor ?? null,
+          queryHash,
+          status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
+          rawPayload: toInputJson(discoveredLead.raw),
+          discoveredAt: new Date(),
+        },
+        update: {
+          providerCursor: job.data.cursor ?? null,
+          queryHash,
+          status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
+          rawPayload: toInputJson(discoveredLead.raw),
+          discoveredAt: new Date(),
+          errorMessage: null,
+        },
+      });
+
+      persistedDiscoveryRecords += 1;
+
+      // Keep JobExecution visibility for operators, but pipeline correctness uses LeadDiscoveryRecord.
+      await prisma.jobExecution.create({
         data: {
           type: DISCOVERY_RECORD_JOB_TYPE,
           status: 'completed',
@@ -387,12 +451,13 @@ export async function handleDiscoveryRunJob(
           payload: {
             runId,
             correlationId: effectiveCorrelationId,
-            icpProfileId: icpProfileId ?? null,
+            icpProfileId: normalizedIcpProfileId,
             selectedProvider,
             providerSource: discoveryResult.source,
             provider: discoveredLead.provider,
             providerRecordId: discoveredLead.providerRecordId,
             raw: discoveredLead.raw,
+            discoveryRecordId: discoveryRecord.id,
           } as Prisma.InputJsonValue,
           result: toInputJson({
             normalized: discoveredLead,
@@ -413,8 +478,8 @@ export async function handleDiscoveryRunJob(
             provider: dependencies.defaultEnrichmentProvider,
             correlationId: effectiveCorrelationId,
             jobExecutionId: null,
-            discoveryRecordId: discoveryRecordExecution.id,
-            icpProfileId: icpProfileId ?? null,
+            discoveryRecordId: discoveryRecord.id,
+            icpProfileId: normalizedIcpProfileId,
           },
           leadId: lead.id,
         },
@@ -426,8 +491,8 @@ export async function handleDiscoveryRunJob(
         provider: dependencies.defaultEnrichmentProvider,
         correlationId: effectiveCorrelationId,
         jobExecutionId: enrichmentJobExecution.id,
-        discoveryRecordId: discoveryRecordExecution.id,
-        icpProfileId,
+        discoveryRecordId: discoveryRecord.id,
+        icpProfileId: normalizedIcpProfileId,
       };
 
       await prisma.jobExecution.update({
@@ -466,6 +531,7 @@ export async function handleDiscoveryRunJob(
         correlationId: effectiveCorrelationId,
         provider: selectedProvider,
         createdLeads,
+        persistedDiscoveryRecords,
         enqueuedEnrichmentJobs,
         nextCursor: discoveryResult.nextCursor,
       },

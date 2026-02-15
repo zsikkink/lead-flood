@@ -76,6 +76,19 @@ function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
 }
 
+function deriveProviderRecordId(
+  result: UnifiedEnrichmentResult,
+  fallbackEmail: string,
+): string | null {
+  if (result.status !== 'success') {
+    return null;
+  }
+
+  const normalized = result.normalized;
+  const fromPayload = normalized.email ?? normalized.companyDomain;
+  return fromPayload ?? fallbackEmail;
+}
+
 interface UnifiedEnrichmentLead {
   provider: string;
   fullName: string | null;
@@ -398,8 +411,54 @@ export async function handleEnrichmentRunJob(
       dependencies,
     );
 
-    // TODO: Replace JobExecution fallback with LeadEnrichmentRecord once schema is available.
-    const enrichmentRecordExecution = await prisma.jobExecution.create({
+    const currentMaxAttempt = await prisma.leadEnrichmentRecord.aggregate({
+      where: {
+        leadId,
+        provider: selectedProvider,
+      },
+      _max: {
+        attempt: true,
+      },
+    });
+    const attempt = (currentMaxAttempt._max.attempt ?? 0) + 1;
+    const requestKey = `${runId}:${leadId}:${selectedProvider}:${job.id}`;
+
+    const enrichmentRecord = await prisma.leadEnrichmentRecord.upsert({
+      where: { requestKey },
+      create: {
+        leadId,
+        provider: selectedProvider,
+        status: enrichmentResult.status === 'success' ? 'COMPLETED' : 'FAILED',
+        attempt,
+        providerRecordId: deriveProviderRecordId(enrichmentResult, lead.email),
+        normalizedPayload:
+          enrichmentResult.status === 'success'
+            ? toInputJson(enrichmentResult.normalized)
+            : Prisma.JsonNull,
+        rawPayload: toInputJson(enrichmentResult),
+        errorCode: enrichmentResult.status === 'success' ? null : 'ENRICHMENT_FAILED',
+        errorMessage:
+          enrichmentResult.status === 'success' ? null : enrichmentResult.failure.message,
+        enrichedAt: enrichmentResult.status === 'success' ? new Date() : null,
+        requestKey,
+      },
+      update: {
+        status: enrichmentResult.status === 'success' ? 'COMPLETED' : 'FAILED',
+        providerRecordId: deriveProviderRecordId(enrichmentResult, lead.email),
+        normalizedPayload:
+          enrichmentResult.status === 'success'
+            ? toInputJson(enrichmentResult.normalized)
+            : Prisma.JsonNull,
+        rawPayload: toInputJson(enrichmentResult),
+        errorCode: enrichmentResult.status === 'success' ? null : 'ENRICHMENT_FAILED',
+        errorMessage:
+          enrichmentResult.status === 'success' ? null : enrichmentResult.failure.message,
+        enrichedAt: enrichmentResult.status === 'success' ? new Date() : null,
+      },
+    });
+
+    // Keep JobExecution visibility for operators, but pipeline correctness uses LeadEnrichmentRecord.
+    await prisma.jobExecution.create({
       data: {
         type: ENRICHMENT_RECORD_JOB_TYPE,
         status: enrichmentResult.status === 'success' ? 'completed' : 'failed',
@@ -440,8 +499,8 @@ export async function handleEnrichmentRunJob(
         leadId,
         icpProfileId: icpProfileId ?? 'default',
         snapshotVersion: 1,
-        sourceVersion: 'v1',
-        enrichmentRecordId: enrichmentRecordExecution.id,
+        sourceVersion: 'features_v1',
+        enrichmentRecordId: enrichmentRecord.id,
         correlationId: effectiveCorrelationId,
       };
 
@@ -466,7 +525,7 @@ export async function handleEnrichmentRunJob(
           runId,
           correlationId: effectiveCorrelationId,
           leadId,
-          enrichmentRecordExecutionId: enrichmentRecordExecution.id,
+          enrichmentRecordId: enrichmentRecord.id,
           featuresJobExecutionId: featuresJobExecution.id,
         },
         'Completed enrichment.run job',
