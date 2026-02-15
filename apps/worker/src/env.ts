@@ -1,41 +1,59 @@
 import { z } from 'zod';
 
+const envBoolean = z.preprocess((value) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return value;
+}, z.boolean());
+
 const WorkerEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   APP_ENV: z.string().min(1).default('local'),
   DATABASE_URL: z.string().min(1),
   PG_BOSS_SCHEMA: z.string().min(1).default('pgboss'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
-  APOLLO_ENABLED: z.coerce.boolean().default(false),
+  APOLLO_ENABLED: envBoolean.default(false),
   APOLLO_API_KEY: z.string().min(1).optional(),
   APOLLO_BASE_URL: z.string().url().default('https://api.apollo.io'),
   APOLLO_RATE_LIMIT_MS: z.coerce.number().int().min(0).default(250),
-  GOOGLE_SEARCH_ENABLED: z.coerce.boolean().default(true),
+  GOOGLE_SEARCH_ENABLED: envBoolean.default(true),
   GOOGLE_SEARCH_API_KEY: z.string().min(1).optional(),
   GOOGLE_SEARCH_ENGINE_ID: z.string().min(1).optional(),
   GOOGLE_SEARCH_BASE_URL: z.string().url().default('https://www.googleapis.com/customsearch/v1'),
   GOOGLE_SEARCH_RATE_LIMIT_MS: z.coerce.number().int().min(0).default(250),
-  LINKEDIN_SCRAPE_ENABLED: z.coerce.boolean().default(false),
+  LINKEDIN_SCRAPE_ENABLED: envBoolean.default(false),
   LINKEDIN_SCRAPE_ENDPOINT: z.string().url().optional(),
   LINKEDIN_SCRAPE_API_KEY: z.string().min(1).optional(),
-  COMPANY_SEARCH_ENABLED: z.coerce.boolean().default(true),
+  COMPANY_SEARCH_ENABLED: envBoolean.default(true),
   COMPANY_SEARCH_BASE_URL: z.string().url().default('https://autocomplete.clearbit.com/v1/companies/suggest'),
-  PDL_ENABLED: z.coerce.boolean().default(false),
+  PDL_ENABLED: envBoolean.default(false),
   PDL_API_KEY: z.string().min(1).optional(),
   PDL_BASE_URL: z.string().url().default('https://api.peopledatalabs.com'),
   PDL_RATE_LIMIT_MS: z.coerce.number().int().min(0).default(250),
-  HUNTER_ENABLED: z.coerce.boolean().default(true),
+  HUNTER_ENABLED: envBoolean.default(true),
   HUNTER_API_KEY: z.string().min(1).optional(),
   HUNTER_BASE_URL: z.string().url().default('https://api.hunter.io/v2'),
   HUNTER_RATE_LIMIT_MS: z.coerce.number().int().min(0).default(250),
-  CLEARBIT_ENABLED: z.coerce.boolean().default(false),
+  CLEARBIT_ENABLED: envBoolean.default(false),
   CLEARBIT_API_KEY: z.string().min(1).optional(),
   CLEARBIT_PERSON_BASE_URL: z.string().url().default('https://person.clearbit.com/v2/people/find'),
   CLEARBIT_COMPANY_BASE_URL: z
     .string()
     .url()
     .default('https://company.clearbit.com/v2/companies/find'),
-  OTHER_FREE_ENRICHMENT_ENABLED: z.coerce.boolean().default(true),
+  OTHER_FREE_ENRICHMENT_ENABLED: envBoolean.default(true),
   PUBLIC_LOOKUP_BASE_URL: z.string().url().default('https://autocomplete.clearbit.com/v1/companies/suggest'),
   DISCOVERY_DEFAULT_PROVIDER: z
     .enum(['GOOGLE_SEARCH', 'LINKEDIN_SCRAPE', 'COMPANY_SEARCH_FREE', 'APOLLO'])
@@ -43,8 +61,8 @@ const WorkerEnvSchema = z.object({
   ENRICHMENT_DEFAULT_PROVIDER: z
     .enum(['HUNTER', 'CLEARBIT', 'OTHER_FREE', 'PEOPLE_DATA_LABS'])
     .default('HUNTER'),
-  DISCOVERY_ENABLED: z.coerce.boolean().default(true),
-  ENRICHMENT_ENABLED: z.coerce.boolean().default(true),
+  DISCOVERY_ENABLED: envBoolean.default(true),
+  ENRICHMENT_ENABLED: envBoolean.default(true),
 });
 
 export type WorkerEnv = z.infer<typeof WorkerEnvSchema>;
