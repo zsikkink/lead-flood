@@ -229,7 +229,10 @@ async function main(): Promise<void> {
     boss,
     logger,
     FEATURES_COMPUTE_JOB_NAME,
-    handleFeaturesComputeJob,
+    (jobLogger, job) =>
+      handleFeaturesComputeJob(jobLogger, job, {
+        boss,
+      }),
   );
   await registerWorker<LabelsGenerateJobPayload>(
     boss,
