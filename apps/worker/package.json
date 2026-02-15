@@ -14,6 +14,7 @@
     "test:integration": "DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:5434/lead_flood} DIRECT_URL=${DIRECT_URL:-postgresql://postgres:postgres@localhost:5434/lead_flood} vitest run test/integration"
   },
   "dependencies": {
+    "@lead-flood/contracts": "workspace:*",
     "@lead-flood/db": "workspace:*",
     "@lead-flood/observability": "workspace:*",
     "pg-boss": "^10.3.0",

@@ -91,6 +91,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@lead-flood/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@lead-flood/db':
         specifier: workspace:*
         version: link:../../packages/db
