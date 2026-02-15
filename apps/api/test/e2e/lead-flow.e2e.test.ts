@@ -186,6 +186,7 @@ describe('lead pipeline e2e', () => {
           where: { id: leadId },
         });
       },
+      listLeads: async () => ({ items: [], page: 1, pageSize: 20, total: 0 }),
       getJobById: async (jobId) => {
         return prisma.jobExecution.findUnique({
           where: { id: jobId },

@@ -85,6 +85,7 @@ export const LeadDiscoveryRecordResponseSchema = z
     queryHash: z.string(),
     status: DiscoveryRecordStatusSchema,
     rawPayload: z.unknown(),
+    errorMessage: z.string().nullable(),
     discoveredAt: z.string().datetime(),
     createdAt: z.string().datetime(),
   })

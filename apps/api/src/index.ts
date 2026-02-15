@@ -163,6 +163,87 @@ async function main(): Promise<void> {
         where: { id: leadId },
       });
     },
+    listLeads: async (query) => {
+      const where = {
+        ...(query.icpProfileId
+          ? {
+              discoveryRecords: {
+                some: {
+                  icpProfileId: query.icpProfileId,
+                },
+              },
+            }
+          : {}),
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.scoreBand
+          ? {
+              scorePredictions: {
+                some: {
+                  ...(query.icpProfileId ? { icpProfileId: query.icpProfileId } : {}),
+                  scoreBand: query.scoreBand,
+                },
+              },
+            }
+          : {}),
+        ...(query.from || query.to
+          ? {
+              createdAt: {
+                ...(query.from ? { gte: new Date(query.from) } : {}),
+                ...(query.to ? { lte: new Date(query.to) } : {}),
+              },
+            }
+          : {}),
+      };
+
+      const [total, rows] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+          include: {
+            discoveryRecords: {
+              ...(query.icpProfileId ? { where: { icpProfileId: query.icpProfileId } } : {}),
+              orderBy: [{ discoveredAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+              take: 1,
+            },
+            enrichmentRecords: {
+              orderBy: [{ enrichedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+              take: 1,
+            },
+            scorePredictions: {
+              ...(query.icpProfileId ? { where: { icpProfileId: query.icpProfileId } } : {}),
+              orderBy: [{ predictedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+              take: 1,
+            },
+          },
+        }),
+      ]);
+
+      return {
+        items: rows.map((lead) => ({
+          id: lead.id,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          email: lead.email,
+          source: lead.source,
+          status: lead.status,
+          error: lead.error,
+          createdAt: lead.createdAt.toISOString(),
+          updatedAt: lead.updatedAt.toISOString(),
+          latestIcpProfileId: lead.discoveryRecords[0]?.icpProfileId ?? null,
+          latestScoreBand: lead.scorePredictions[0]?.scoreBand ?? null,
+          latestBlendedScore: lead.scorePredictions[0]?.blendedScore ?? null,
+          latestDiscoveryRawPayload: lead.discoveryRecords[0]?.rawPayload ?? null,
+          latestEnrichmentNormalizedPayload: lead.enrichmentRecords[0]?.normalizedPayload ?? null,
+          latestEnrichmentRawPayload: lead.enrichmentRecords[0]?.rawPayload ?? null,
+        })),
+        page: query.page,
+        pageSize: query.pageSize,
+        total,
+      };
+    },
     getJobById: async (jobId) => {
       return prisma.jobExecution.findUnique({
         where: { id: jobId },

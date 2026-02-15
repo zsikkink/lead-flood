@@ -7,9 +7,13 @@ import {
   GetJobStatusResponseSchema,
   GetLeadResponseSchema,
   HealthResponseSchema,
+  ListLeadsQuerySchema,
+  ListLeadsResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
   type CreateLeadRequest,
+  type ListLeadsQuery,
+  type ListLeadsResponse,
   type LoginRequest,
   type LoginResponse,
   type JobStatus,
@@ -18,6 +22,7 @@ import {
 } from '@lead-flood/contracts';
 
 import type { ApiEnv } from './env.js';
+import { registerApiModules } from './modules/index.js';
 
 export class LeadAlreadyExistsError extends Error {
   constructor(message = 'Lead already exists') {
@@ -60,6 +65,7 @@ export interface BuildServerOptions {
   authenticateUser: (input: LoginRequest) => Promise<LoginResponse | null>;
   createLeadAndEnqueue: (input: CreateLeadRequest) => Promise<{ leadId: string; jobId: string }>;
   getLeadById: (leadId: string) => Promise<LeadRecord | null>;
+  listLeads: (query: ListLeadsQuery) => Promise<ListLeadsResponse>;
   getJobById: (jobId: string) => Promise<JobRecord | null>;
 }
 
@@ -147,6 +153,20 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     }
   });
 
+  app.get('/v1/leads', async (request, reply) => {
+    const parsedQuery = ListLeadsQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      reply.status(400);
+      return ErrorResponseSchema.parse({
+        error: 'Invalid lead list query',
+        requestId: request.id,
+      });
+    }
+
+    const result = await options.listLeads(parsedQuery.data);
+    return ListLeadsResponseSchema.parse(result);
+  });
+
   app.get('/v1/leads/:id', async (request, reply) => {
     const params = request.params as { id?: string };
     const leadId = params.id;
@@ -206,6 +226,8 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       updatedAt: job.updatedAt.toISOString(),
     });
   });
+
+  registerApiModules(app);
 
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send(

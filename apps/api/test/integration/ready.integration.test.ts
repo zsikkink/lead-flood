@@ -30,6 +30,7 @@ describe('GET /ready', () => {
       authenticateUser: async () => null,
       createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
       getLeadById: async () => null,
+      listLeads: async () => ({ items: [], page: 1, pageSize: 20, total: 0 }),
       getJobById: async () => null,
     });
 
@@ -48,6 +49,7 @@ describe('GET /ready', () => {
       authenticateUser: async () => null,
       createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
       getLeadById: async () => null,
+      listLeads: async () => ({ items: [], page: 1, pageSize: 20, total: 0 }),
       getJobById: async () => null,
     });
 

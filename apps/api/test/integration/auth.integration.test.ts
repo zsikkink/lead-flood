@@ -84,6 +84,7 @@ describe('POST /v1/auth/login integration', () => {
       }),
       createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
       getLeadById: async () => null,
+      listLeads: async () => ({ items: [], page: 1, pageSize: 20, total: 0 }),
       getJobById: async () => null,
     });
 

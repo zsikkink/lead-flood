@@ -41,6 +41,7 @@ const makeDefaultOptions = (): BuildServerOptions => ({
   }),
   createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
   getLeadById: async () => null,
+  listLeads: async () => ({ items: [], page: 1, pageSize: 20, total: 0 }),
   getJobById: async () => null,
 });
 
@@ -196,6 +197,24 @@ describe('buildServer', () => {
 
     expect(response.statusCode).toBe(404);
     expect(body.error).toBe('Lead not found');
+  });
+
+  it('returns paginated lead inspection list', async () => {
+    const server = buildServer(makeDefaultOptions());
+    servers.push(server);
+
+    const response = await server.inject({
+      method: 'GET',
+      url: '/v1/leads?page=1&pageSize=20',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+    });
   });
 
   it('returns lead payload when found', async () => {
