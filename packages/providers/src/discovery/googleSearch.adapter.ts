@@ -3,6 +3,10 @@ export interface GoogleSearchIcpFilters {
   countries?: string[];
   requiredTechnologies?: string[];
   excludedDomains?: string[];
+  minCompanySize?: number;
+  maxCompanySize?: number;
+  includeTerms?: string[];
+  excludeTerms?: string[];
 }
 
 export interface GoogleSearchDiscoveryRequest {
@@ -89,26 +93,64 @@ function parseDomain(url: string | null): string | null {
   }
 }
 
-function deriveQuery(request: GoogleSearchDiscoveryRequest): string {
-  if (request.query) {
-    return request.query;
+function quoteTerm(term: string): string {
+  return term.includes(' ') ? `"${term}"` : term;
+}
+
+function uniqueTerms(values: string[]): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeString(value)?.toLowerCase())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+export function buildGoogleSearchQuery(input: Pick<GoogleSearchDiscoveryRequest, 'query' | 'filters'>): string {
+  if (input.query && input.query.trim().length > 0) {
+    return input.query.trim();
+  }
+
+  const includeTerms = uniqueTerms([
+    ...(input.filters?.industries ?? []),
+    ...(input.filters?.countries ?? []),
+    ...(input.filters?.requiredTechnologies ?? []),
+    ...(input.filters?.includeTerms ?? []),
+  ]);
+  const excludeTerms = uniqueTerms(input.filters?.excludeTerms ?? []);
+  const excludedDomains = uniqueTerms(input.filters?.excludedDomains ?? []);
+
+  if (
+    input.filters?.minCompanySize !== undefined ||
+    input.filters?.maxCompanySize !== undefined
+  ) {
+    const min = input.filters?.minCompanySize;
+    const max = input.filters?.maxCompanySize;
+    if (min !== undefined && max !== undefined) {
+      includeTerms.push(`${min}-${max} employees`);
+    } else if (min !== undefined) {
+      includeTerms.push(`${min}+ employees`);
+    } else if (max !== undefined) {
+      includeTerms.push(`up to ${max} employees`);
+    }
   }
 
   const parts: string[] = [];
-  if (request.filters?.industries?.length) {
-    parts.push(request.filters.industries.join(' OR '));
-  }
-  if (request.filters?.countries?.length) {
-    parts.push(request.filters.countries.join(' OR '));
-  }
-  if (request.filters?.requiredTechnologies?.length) {
-    parts.push(request.filters.requiredTechnologies.join(' OR '));
-  }
-  if (parts.length > 0) {
-    return parts.join(' ');
+  if (includeTerms.length > 0) {
+    parts.push(includeTerms.map((term) => quoteTerm(term)).join(' '));
+  } else {
+    parts.push('B2B companies');
   }
 
-  return 'B2B companies';
+  for (const domain of excludedDomains) {
+    parts.push(`-site:${domain}`);
+  }
+  for (const term of excludeTerms) {
+    parts.push(`-${quoteTerm(term)}`);
+  }
+
+  return parts.join(' ').trim();
 }
 
 function deriveLeadName(companyName: string | null): { firstName: string; lastName: string } {
@@ -169,7 +211,7 @@ export class GoogleSearchAdapter {
 
     const start = parseCursor(request.cursor);
     const num = Math.min(Math.max(request.limit, 1), this.maxPageSize);
-    const query = deriveQuery(request);
+    const query = buildGoogleSearchQuery(request);
 
     const params = new URLSearchParams({
       key: this.apiKey,

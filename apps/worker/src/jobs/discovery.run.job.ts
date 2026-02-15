@@ -48,6 +48,10 @@ export interface DiscoveryRunFilters {
   countries?: string[];
   requiredTechnologies?: string[];
   excludedDomains?: string[];
+  minCompanySize?: number;
+  maxCompanySize?: number;
+  includeTerms?: string[];
+  excludeTerms?: string[];
 }
 
 export interface DiscoveryRunJobPayload
@@ -114,13 +118,306 @@ function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
 }
 
+function normalizeString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeString(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+function extractStringValues(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === 'string');
+  }
+  return [];
+}
+
+function extractNumericValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function appendUnique(target: string[], source: string[]): string[] {
+  return uniqueStrings([...target, ...source]);
+}
+
+function quoteSearchTerm(term: string): string {
+  return term.includes(' ') ? `"${term}"` : term;
+}
+
+function buildGoogleSearchQueryFromFilters(filters: DiscoveryRunFilters | undefined): string {
+  if (!filters) {
+    return 'B2B companies';
+  }
+
+  const includeTerms = uniqueStrings([
+    ...(filters.industries ?? []),
+    ...(filters.countries ?? []),
+    ...(filters.requiredTechnologies ?? []),
+    ...(filters.includeTerms ?? []),
+  ]);
+  const parts: string[] = [];
+  if (includeTerms.length > 0) {
+    parts.push(includeTerms.map((term) => quoteSearchTerm(term)).join(' '));
+  } else {
+    parts.push('B2B companies');
+  }
+  for (const domain of uniqueStrings(filters.excludedDomains ?? [])) {
+    parts.push(`-site:${domain}`);
+  }
+  for (const term of uniqueStrings(filters.excludeTerms ?? [])) {
+    parts.push(`-${quoteSearchTerm(term)}`);
+  }
+  return parts.join(' ').trim();
+}
+
+function buildLinkedInQueryFromFilters(filters: DiscoveryRunFilters | undefined): string {
+  if (!filters) {
+    return 'site:linkedin.com/in sales';
+  }
+
+  const includeTerms = uniqueStrings([
+    ...(filters.industries ?? []),
+    ...(filters.countries ?? []),
+    ...(filters.requiredTechnologies ?? []),
+    ...(filters.includeTerms ?? []),
+  ]);
+  const parts: string[] = ['site:linkedin.com/in'];
+  if (includeTerms.length > 0) {
+    parts.push(includeTerms.map((term) => quoteSearchTerm(term)).join(' '));
+  } else {
+    parts.push('sales');
+  }
+  for (const domain of uniqueStrings(filters.excludedDomains ?? [])) {
+    parts.push(`-${quoteSearchTerm(domain)}`);
+  }
+  for (const term of uniqueStrings(filters.excludeTerms ?? [])) {
+    parts.push(`-${quoteSearchTerm(term)}`);
+  }
+  return parts.join(' ').trim();
+}
+
+function buildCompanySearchQueryFromFilters(filters: DiscoveryRunFilters | undefined): string | undefined {
+  if (!filters) {
+    return undefined;
+  }
+  const terms = uniqueStrings([
+    ...(filters.industries ?? []),
+    ...(filters.requiredTechnologies ?? []),
+    ...(filters.includeTerms ?? []),
+  ]);
+  return terms.length > 0 ? terms.join(' ') : undefined;
+}
+
+function mapRulesToFilters(
+  rules: Array<{
+    fieldKey: string;
+    operator: string;
+    valueJson: unknown;
+    isActive: boolean;
+  }>,
+): DiscoveryRunFilters {
+  const filters: DiscoveryRunFilters = {
+    industries: [],
+    countries: [],
+    requiredTechnologies: [],
+    excludedDomains: [],
+    includeTerms: [],
+    excludeTerms: [],
+  };
+
+  for (const rule of rules) {
+    if (!rule.isActive) {
+      continue;
+    }
+
+    const fieldKey = normalizeString(rule.fieldKey) ?? '';
+    const operator = rule.operator;
+    const valueStrings = extractStringValues(rule.valueJson);
+
+    if (['industry', 'industry_match', 'company_industry'].includes(fieldKey)) {
+      if (['EQ', 'IN', 'CONTAINS'].includes(operator)) {
+        filters.industries = appendUnique(filters.industries ?? [], valueStrings);
+      }
+      continue;
+    }
+
+    if (['country', 'geo', 'geo_match', 'location_country'].includes(fieldKey)) {
+      if (['EQ', 'IN', 'CONTAINS'].includes(operator)) {
+        filters.countries = appendUnique(filters.countries ?? [], valueStrings);
+      }
+      continue;
+    }
+
+    if (['technology', 'required_technology', 'required_technologies'].includes(fieldKey)) {
+      if (['EQ', 'IN', 'CONTAINS'].includes(operator)) {
+        filters.requiredTechnologies = appendUnique(
+          filters.requiredTechnologies ?? [],
+          valueStrings,
+        );
+      }
+      continue;
+    }
+
+    if (['domain', 'company_domain'].includes(fieldKey)) {
+      if (['NOT_IN', 'NEQ'].includes(operator)) {
+        filters.excludedDomains = appendUnique(filters.excludedDomains ?? [], valueStrings);
+      } else if (['EQ', 'IN', 'CONTAINS'].includes(operator)) {
+        filters.includeTerms = appendUnique(filters.includeTerms ?? [], valueStrings);
+      }
+      continue;
+    }
+
+    if (['employee_count', 'company_size', 'employee_size'].includes(fieldKey)) {
+      const numeric = extractNumericValue(rule.valueJson);
+      if (numeric === null) {
+        continue;
+      }
+
+      if (operator === 'GTE' || operator === 'GT' || operator === 'EQ') {
+        filters.minCompanySize =
+          filters.minCompanySize === undefined
+            ? numeric
+            : Math.max(filters.minCompanySize, numeric);
+      }
+      if (operator === 'LTE' || operator === 'LT' || operator === 'EQ') {
+        filters.maxCompanySize =
+          filters.maxCompanySize === undefined
+            ? numeric
+            : Math.min(filters.maxCompanySize, numeric);
+      }
+      continue;
+    }
+
+    if (['NOT_IN', 'NEQ'].includes(operator)) {
+      filters.excludeTerms = appendUnique(filters.excludeTerms ?? [], valueStrings);
+      continue;
+    }
+
+    if (['EQ', 'IN', 'CONTAINS'].includes(operator)) {
+      filters.includeTerms = appendUnique(filters.includeTerms ?? [], valueStrings);
+    }
+  }
+
+  return filters;
+}
+
+function resolveDiscoveryFilters(
+  payloadFilters: DiscoveryRunFilters | undefined,
+  icpProfile: {
+    targetIndustries: string[];
+    targetCountries: string[];
+    requiredTechnologies: string[];
+    excludedDomains: string[];
+    minCompanySize: number | null;
+    maxCompanySize: number | null;
+  },
+  qualificationRules: Array<{
+    fieldKey: string;
+    operator: string;
+    valueJson: unknown;
+    isActive: boolean;
+  }>,
+): DiscoveryRunFilters {
+  const ruleFilters = mapRulesToFilters(qualificationRules);
+
+  const minCompanySizeCandidates = [
+    payloadFilters?.minCompanySize,
+    icpProfile.minCompanySize ?? undefined,
+    ruleFilters.minCompanySize,
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const maxCompanySizeCandidates = [
+    payloadFilters?.maxCompanySize,
+    icpProfile.maxCompanySize ?? undefined,
+    ruleFilters.maxCompanySize,
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+  const resolved: DiscoveryRunFilters = {
+    industries: appendUnique(
+      [
+        ...(payloadFilters?.industries ?? []),
+        ...icpProfile.targetIndustries,
+      ],
+      ruleFilters.industries ?? [],
+    ),
+    countries: appendUnique(
+      [
+        ...(payloadFilters?.countries ?? []),
+        ...icpProfile.targetCountries,
+      ],
+      ruleFilters.countries ?? [],
+    ),
+    requiredTechnologies: appendUnique(
+      [
+        ...(payloadFilters?.requiredTechnologies ?? []),
+        ...icpProfile.requiredTechnologies,
+      ],
+      ruleFilters.requiredTechnologies ?? [],
+    ),
+    excludedDomains: appendUnique(
+      [
+        ...(payloadFilters?.excludedDomains ?? []),
+        ...icpProfile.excludedDomains,
+      ],
+      ruleFilters.excludedDomains ?? [],
+    ),
+    includeTerms: appendUnique(
+      payloadFilters?.includeTerms ?? [],
+      ruleFilters.includeTerms ?? [],
+    ),
+    excludeTerms: appendUnique(
+      payloadFilters?.excludeTerms ?? [],
+      ruleFilters.excludeTerms ?? [],
+    ),
+  };
+
+  if (minCompanySizeCandidates.length > 0) {
+    resolved.minCompanySize = Math.max(...minCompanySizeCandidates);
+  }
+  if (maxCompanySizeCandidates.length > 0) {
+    resolved.maxCompanySize = Math.min(...maxCompanySizeCandidates);
+  }
+
+  return resolved;
+}
+
 function computeQueryHash(payload: DiscoveryRunJobPayload, provider: DiscoveryProvider): string {
   const normalized = JSON.stringify({
     provider,
     icpProfileId: payload.icpProfileId ?? null,
     cursor: payload.cursor ?? null,
     limit: payload.limit ?? null,
-    filters: payload.filters ?? null,
+    filters: {
+      industries: [...(payload.filters?.industries ?? [])].sort(),
+      countries: [...(payload.filters?.countries ?? [])].sort(),
+      requiredTechnologies: [...(payload.filters?.requiredTechnologies ?? [])].sort(),
+      excludedDomains: [...(payload.filters?.excludedDomains ?? [])].sort(),
+      minCompanySize: payload.filters?.minCompanySize ?? null,
+      maxCompanySize: payload.filters?.maxCompanySize ?? null,
+      includeTerms: [...(payload.filters?.includeTerms ?? [])].sort(),
+      excludeTerms: [...(payload.filters?.excludeTerms ?? [])].sort(),
+    },
   });
 
   return createHash('sha256').update(normalized).digest('hex');
@@ -167,10 +464,8 @@ function toGoogleSearchRequest(
   }
   if (payload.filters) {
     request.filters = payload.filters;
-    if (payload.filters.industries?.[0]) {
-      request.query = payload.filters.industries[0];
-    }
   }
+  request.query = buildGoogleSearchQueryFromFilters(payload.filters);
 
   return request;
 }
@@ -193,10 +488,8 @@ function toLinkedInRequest(
   }
   if (payload.filters) {
     request.filters = payload.filters;
-    if (payload.filters.industries?.[0]) {
-      request.query = `${payload.filters.industries[0]} sales`;
-    }
   }
+  request.query = buildLinkedInQueryFromFilters(payload.filters);
 
   return request;
 }
@@ -219,9 +512,10 @@ function toCompanySearchRequest(
   }
   if (payload.filters) {
     request.filters = payload.filters;
-    if (payload.filters.industries?.[0]) {
-      request.query = payload.filters.industries[0];
-    }
+  }
+  const query = buildCompanySearchQueryFromFilters(payload.filters);
+  if (query) {
+    request.query = query;
   }
 
   return request;
@@ -367,12 +661,71 @@ export async function handleDiscoveryRunJob(
     return;
   }
 
+  const icpProfile = await prisma.icpProfile.findUnique({
+    where: { id: normalizedIcpProfileId },
+    select: {
+      id: true,
+      targetIndustries: true,
+      targetCountries: true,
+      requiredTechnologies: true,
+      excludedDomains: true,
+      minCompanySize: true,
+      maxCompanySize: true,
+    },
+  });
+
+  if (!icpProfile) {
+    logger.warn(
+      {
+        jobId: job.id,
+        runId,
+        correlationId: effectiveCorrelationId,
+        icpProfileId: normalizedIcpProfileId,
+      },
+      'Skipping discovery.run job because icpProfile was not found',
+    );
+    return;
+  }
+
+  const qualificationRules = await prisma.qualificationRule.findMany({
+    where: {
+      icpProfileId: normalizedIcpProfileId,
+      isActive: true,
+    },
+    orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
+    select: {
+      fieldKey: true,
+      operator: true,
+      valueJson: true,
+      isActive: true,
+    },
+  });
+
+  const resolvedFilters = resolveDiscoveryFilters(job.data.filters, icpProfile, qualificationRules);
   const requestedLimit = job.data.limit ?? dependencies.defaultLimit ?? DEFAULT_DISCOVERY_LIMIT;
-  const queryHash = computeQueryHash(job.data, selectedProvider);
+  const discoveryPayload: DiscoveryRunJobPayload = {
+    ...job.data,
+    icpProfileId: normalizedIcpProfileId,
+    filters: resolvedFilters,
+  };
+  const queryHash = computeQueryHash(discoveryPayload, selectedProvider);
+
+  logger.info(
+    {
+      jobId: job.id,
+      runId,
+      correlationId: effectiveCorrelationId,
+      icpProfileId: normalizedIcpProfileId,
+      provider: selectedProvider,
+      resolvedFilters,
+      activeRuleCount: qualificationRules.length,
+    },
+    'Resolved discovery filters from ICP profile and qualification rules',
+  );
 
   try {
     const discoveryResult = await executeDiscoveryProvider(
-      job.data,
+      discoveryPayload,
       selectedProvider,
       requestedLimit,
       effectiveCorrelationId,
@@ -424,14 +777,14 @@ export async function handleDiscoveryRunJob(
           icpProfileId: normalizedIcpProfileId,
           provider: selectedProvider,
           providerRecordId: discoveredLead.providerRecordId,
-          providerCursor: job.data.cursor ?? null,
+          providerCursor: discoveryPayload.cursor ?? null,
           queryHash,
           status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
           rawPayload: toInputJson(discoveredLead.raw),
           discoveredAt: new Date(),
         },
         update: {
-          providerCursor: job.data.cursor ?? null,
+          providerCursor: discoveryPayload.cursor ?? null,
           queryHash,
           status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
           rawPayload: toInputJson(discoveredLead.raw),
@@ -510,9 +863,9 @@ export async function handleDiscoveryRunJob(
       enqueuedEnrichmentJobs += 1;
     }
 
-    if (discoveryResult.nextCursor && discoveryResult.nextCursor !== job.data.cursor) {
+    if (discoveryResult.nextCursor && discoveryResult.nextCursor !== discoveryPayload.cursor) {
       const nextPayload: DiscoveryRunJobPayload = {
-        ...job.data,
+        ...discoveryPayload,
         cursor: discoveryResult.nextCursor,
         correlationId: effectiveCorrelationId,
       };

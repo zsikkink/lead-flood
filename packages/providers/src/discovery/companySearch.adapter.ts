@@ -52,13 +52,31 @@ function domainToName(domain: string): string {
   return name.slice(0, 1).toUpperCase() + name.slice(1);
 }
 
-function deriveQuery(input: CompanySearchDiscoveryRequest): string | null {
-  if (input.query) {
-    return input.query;
+function uniqueTerms(values: string[]): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeString(value)?.toLowerCase())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+export function buildCompanySearchQuery(
+  input: Pick<CompanySearchDiscoveryRequest, 'query' | 'filters'>,
+): string | null {
+  if (input.query && input.query.trim().length > 0) {
+    return input.query.trim();
   }
 
-  if (input.filters?.industries?.length) {
-    return input.filters.industries[0] ?? null;
+  const terms = uniqueTerms([
+    ...(input.filters?.industries ?? []),
+    ...(input.filters?.requiredTechnologies ?? []),
+    ...(input.filters?.includeTerms ?? []),
+  ]);
+
+  if (terms.length > 0) {
+    return terms.join(' ');
   }
 
   return null;
@@ -78,7 +96,7 @@ export class CompanySearchAdapter {
   }
 
   async discoverLeads(input: CompanySearchDiscoveryRequest): Promise<CompanySearchDiscoveryResult> {
-    const query = deriveQuery(input);
+    const query = buildCompanySearchQuery(input);
 
     if (!this.enabled || !query) {
       return {

@@ -5,6 +5,8 @@ export interface DiscoveryIcpFilters {
   excludedDomains?: string[];
   minCompanySize?: number;
   maxCompanySize?: number;
+  includeTerms?: string[];
+  excludeTerms?: string[];
 }
 
 export interface ApolloDiscoveryRequest {
@@ -99,6 +101,70 @@ function parseRetryAfterSeconds(retryAfterHeader: string | null): number {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 30;
 }
 
+function normalizeTerms(values: string[] | undefined): string[] {
+  if (!values || values.length === 0) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeString(value)?.toLowerCase())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+export function buildApolloSearchRequestBody(
+  input: Pick<ApolloDiscoveryRequest, 'filters'>,
+  page: number,
+  perPage: number,
+): Record<string, unknown> {
+  const requestBody: Record<string, unknown> = {
+    page,
+    per_page: perPage,
+  };
+
+  if (input.filters?.countries?.length) {
+    requestBody.person_locations = input.filters.countries;
+  }
+
+  const includeTerms = normalizeTerms([
+    ...(input.filters?.industries ?? []),
+    ...(input.filters?.includeTerms ?? []),
+  ]);
+  const excludeTerms = normalizeTerms(input.filters?.excludeTerms);
+  const excludedDomains = normalizeTerms(input.filters?.excludedDomains);
+  const keywordTerms: string[] = [];
+
+  if (includeTerms.length > 0) {
+    keywordTerms.push(...includeTerms);
+  }
+  if (excludeTerms.length > 0) {
+    keywordTerms.push(...excludeTerms.map((term) => `NOT ${term}`));
+  }
+  if (excludedDomains.length > 0) {
+    keywordTerms.push(...excludedDomains.map((domain) => `NOT ${domain}`));
+  }
+  if (keywordTerms.length > 0) {
+    requestBody.q_keywords = keywordTerms.join(' ');
+  }
+
+  if (input.filters?.requiredTechnologies?.length) {
+    requestBody.q_organization_technology_names = input.filters.requiredTechnologies;
+  }
+
+  if (input.filters?.minCompanySize !== undefined) {
+    requestBody.q_organization_num_employees_gte = input.filters.minCompanySize;
+  }
+
+  if (input.filters?.maxCompanySize !== undefined) {
+    requestBody.q_organization_num_employees_lte = input.filters.maxCompanySize;
+  }
+
+  return requestBody;
+}
+
 export class ApolloRateLimitError extends Error {
   readonly retryAfterSeconds: number;
 
@@ -133,30 +199,7 @@ export class ApolloDiscoveryAdapter {
     const page = parseCursor(input.cursor);
     const perPage = Math.min(Math.max(input.limit, 1), this.maxPageSize);
 
-    const requestBody: Record<string, unknown> = {
-      page,
-      per_page: perPage,
-    };
-
-    if (input.filters?.countries?.length) {
-      requestBody.person_locations = input.filters.countries;
-    }
-
-    if (input.filters?.industries?.length) {
-      requestBody.q_keywords = input.filters.industries.join(' ');
-    }
-
-    if (input.filters?.requiredTechnologies?.length) {
-      requestBody.q_organization_technology_names = input.filters.requiredTechnologies;
-    }
-
-    if (input.filters?.minCompanySize !== undefined) {
-      requestBody.q_organization_num_employees_gte = input.filters.minCompanySize;
-    }
-
-    if (input.filters?.maxCompanySize !== undefined) {
-      requestBody.q_organization_num_employees_lte = input.filters.maxCompanySize;
-    }
+    const requestBody = buildApolloSearchRequestBody(input, page, perPage);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -279,6 +322,30 @@ export class ApolloDiscoveryAdapter {
     if (filters.countries?.length && lead.country) {
       const countries = new Set(filters.countries.map((country) => country.toLowerCase()));
       if (!countries.has(lead.country.toLowerCase())) {
+        return false;
+      }
+    }
+
+    const searchableText = [
+      lead.title,
+      lead.companyName,
+      lead.companyDomain,
+      lead.country,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(' ')
+      .toLowerCase();
+
+    if (filters.includeTerms?.length) {
+      const includeTerms = filters.includeTerms.map((term) => term.toLowerCase());
+      if (!includeTerms.every((term) => searchableText.includes(term))) {
+        return false;
+      }
+    }
+
+    if (filters.excludeTerms?.length) {
+      const excludeTerms = filters.excludeTerms.map((term) => term.toLowerCase());
+      if (excludeTerms.some((term) => searchableText.includes(term))) {
         return false;
       }
     }

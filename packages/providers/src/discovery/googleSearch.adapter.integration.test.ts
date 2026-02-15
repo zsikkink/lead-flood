@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { GoogleSearchAdapter, GoogleSearchRateLimitError } from './googleSearch.adapter.js';
+import {
+  buildGoogleSearchQuery,
+  GoogleSearchAdapter,
+  GoogleSearchRateLimitError,
+} from './googleSearch.adapter.js';
 
 describe('GoogleSearchAdapter integration', () => {
   it('returns normalized discovery results', async () => {
@@ -80,5 +84,28 @@ describe('GoogleSearchAdapter integration', () => {
         limit: 10,
       }),
     ).rejects.toBeInstanceOf(GoogleSearchRateLimitError);
+  });
+
+  it('builds deterministic query text from ICP filters', () => {
+    const query = buildGoogleSearchQuery({
+      filters: {
+        industries: ['Retail'],
+        countries: ['AE'],
+        requiredTechnologies: ['shopify'],
+        excludedDomains: ['example.com'],
+        minCompanySize: 50,
+        maxCompanySize: 500,
+        includeTerms: ['series b'],
+        excludeTerms: ['agency'],
+      },
+    });
+
+    expect(query).toContain('retail');
+    expect(query).toContain('ae');
+    expect(query).toContain('shopify');
+    expect(query).toContain('50-500 employees');
+    expect(query).toContain('series b');
+    expect(query).toContain('-site:example.com');
+    expect(query).toContain('-agency');
   });
 });

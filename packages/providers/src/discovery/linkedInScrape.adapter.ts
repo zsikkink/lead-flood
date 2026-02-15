@@ -48,6 +48,52 @@ function normalizeString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function quoteTerm(term: string): string {
+  return term.includes(' ') ? `"${term}"` : term;
+}
+
+function uniqueTerms(values: string[]): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeString(value)?.toLowerCase())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+export function buildLinkedInSearchQuery(
+  input: Pick<LinkedInScrapeDiscoveryRequest, 'query' | 'filters'>,
+): string {
+  if (input.query && input.query.trim().length > 0) {
+    return input.query.trim();
+  }
+
+  const includeTerms = uniqueTerms([
+    ...(input.filters?.industries ?? []),
+    ...(input.filters?.countries ?? []),
+    ...(input.filters?.requiredTechnologies ?? []),
+    ...(input.filters?.includeTerms ?? []),
+  ]);
+  const excludeTerms = uniqueTerms(input.filters?.excludeTerms ?? []);
+  const excludedDomains = uniqueTerms(input.filters?.excludedDomains ?? []);
+
+  const parts: string[] = ['site:linkedin.com/in'];
+  if (includeTerms.length > 0) {
+    parts.push(includeTerms.map((term) => quoteTerm(term)).join(' '));
+  } else {
+    parts.push('"sales"');
+  }
+  for (const domain of excludedDomains) {
+    parts.push(`-${quoteTerm(domain)}`);
+  }
+  for (const term of excludeTerms) {
+    parts.push(`-${quoteTerm(term)}`);
+  }
+
+  return parts.join(' ').trim();
+}
+
 export class LinkedInScrapeRateLimitError extends Error {
   readonly retryAfterSeconds: number;
 
@@ -93,7 +139,10 @@ export class LinkedInScrapeAdapter {
           'content-type': 'application/json',
           ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}),
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify({
+          ...request,
+          query: buildLinkedInSearchQuery(request),
+        }),
         signal: controller.signal,
       });
     } finally {

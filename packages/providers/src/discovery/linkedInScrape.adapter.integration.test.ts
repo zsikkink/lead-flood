@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { LinkedInScrapeAdapter, LinkedInScrapeRateLimitError } from './linkedInScrape.adapter.js';
+import {
+  buildLinkedInSearchQuery,
+  LinkedInScrapeAdapter,
+  LinkedInScrapeRateLimitError,
+} from './linkedInScrape.adapter.js';
 
 describe('LinkedInScrapeAdapter integration', () => {
   it('returns normalized leads from scrape endpoint', async () => {
@@ -79,5 +83,26 @@ describe('LinkedInScrapeAdapter integration', () => {
         limit: 5,
       }),
     ).rejects.toBeInstanceOf(LinkedInScrapeRateLimitError);
+  });
+
+  it('builds deterministic linkedin query text from ICP filters', () => {
+    const query = buildLinkedInSearchQuery({
+      filters: {
+        industries: ['SaaS'],
+        countries: ['UAE'],
+        requiredTechnologies: ['hubspot'],
+        includeTerms: ['b2b'],
+        excludedDomains: ['blocked.com'],
+        excludeTerms: ['freelancer'],
+      },
+    });
+
+    expect(query).toContain('site:linkedin.com/in');
+    expect(query).toContain('saas');
+    expect(query).toContain('uae');
+    expect(query).toContain('hubspot');
+    expect(query).toContain('b2b');
+    expect(query).toContain('-blocked.com');
+    expect(query).toContain('-freelancer');
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { CompanySearchAdapter } from './companySearch.adapter.js';
+import { buildCompanySearchQuery, CompanySearchAdapter } from './companySearch.adapter.js';
 
 describe('CompanySearchAdapter integration', () => {
   it('returns normalized company results', async () => {
@@ -45,5 +45,17 @@ describe('CompanySearchAdapter integration', () => {
 
     expect(result.source).toBe('stub');
     expect(result.leads).toHaveLength(0);
+  });
+
+  it('builds company search query from ICP filters', () => {
+    const query = buildCompanySearchQuery({
+      filters: {
+        industries: ['retail'],
+        requiredTechnologies: ['shopify'],
+        includeTerms: ['d2c'],
+      },
+    });
+
+    expect(query).toBe('retail shopify d2c');
   });
 });

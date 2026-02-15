@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApolloDiscoveryAdapter, ApolloRateLimitError } from './apollo.adapter.js';
+import {
+  ApolloDiscoveryAdapter,
+  ApolloRateLimitError,
+  buildApolloSearchRequestBody,
+} from './apollo.adapter.js';
 
 describe('ApolloDiscoveryAdapter integration', () => {
   it('normalizes leads and returns next cursor', async () => {
@@ -93,5 +97,34 @@ describe('ApolloDiscoveryAdapter integration', () => {
         limit: 10,
       }),
     ).rejects.toBeInstanceOf(ApolloRateLimitError);
+  });
+
+  it('builds deterministic apollo payload from ICP filters', () => {
+    const payload = buildApolloSearchRequestBody(
+      {
+        filters: {
+          industries: ['Retail'],
+          countries: ['AE'],
+          requiredTechnologies: ['Shopify'],
+          excludedDomains: ['blocked.com'],
+          minCompanySize: 100,
+          maxCompanySize: 1000,
+          includeTerms: ['series b'],
+          excludeTerms: ['agency'],
+        },
+      },
+      2,
+      25,
+    );
+
+    expect(payload.page).toBe(2);
+    expect(payload.per_page).toBe(25);
+    expect(payload.person_locations).toEqual(['AE']);
+    expect(payload.q_organization_technology_names).toEqual(['Shopify']);
+    expect(payload.q_organization_num_employees_gte).toBe(100);
+    expect(payload.q_organization_num_employees_lte).toBe(1000);
+    expect(String(payload.q_keywords)).toContain('retail');
+    expect(String(payload.q_keywords)).toContain('NOT blocked.com');
+    expect(String(payload.q_keywords)).toContain('NOT agency');
   });
 });
