@@ -31,8 +31,8 @@ export interface LinkedInScrapeResult {
 
 export interface LinkedInScrapeAdapterConfig {
   enabled: boolean;
-  scrapeEndpoint?: string;
-  apiKey?: string;
+  scrapeEndpoint: string | undefined;
+  apiKey: string | undefined;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }

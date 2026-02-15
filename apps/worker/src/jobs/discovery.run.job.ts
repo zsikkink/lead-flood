@@ -1,10 +1,21 @@
-import type { CreateDiscoveryRunRequest } from '@lead-flood/contracts';
+import type {
+  CreateDiscoveryRunRequest,
+  DiscoveryProvider,
+  EnrichmentProvider,
+} from '@lead-flood/contracts';
 import { Prisma, prisma } from '@lead-flood/db';
 import {
   ApolloDiscoveryAdapter,
   type ApolloDiscoveryRequest,
   ApolloRateLimitError,
-  type DiscoveryIcpFilters,
+  CompanySearchAdapter,
+  type CompanySearchDiscoveryRequest,
+  GoogleSearchAdapter,
+  type GoogleSearchDiscoveryRequest,
+  GoogleSearchRateLimitError,
+  LinkedInScrapeAdapter,
+  type LinkedInScrapeDiscoveryRequest,
+  LinkedInScrapeRateLimitError,
 } from '@lead-flood/providers';
 import type PgBoss from 'pg-boss';
 import type { Job, SendOptions } from 'pg-boss';
@@ -28,14 +39,21 @@ export const DISCOVERY_RUN_RETRY_OPTIONS: Pick<
   deadLetter: 'discovery.run.dead_letter',
 };
 
-const DISCOVERY_RECORD_JOB_TYPE = 'lead.discovery.apollo';
+const DISCOVERY_RECORD_JOB_TYPE = 'lead.discovery';
 const DEFAULT_DISCOVERY_LIMIT = 25;
 
+export interface DiscoveryRunFilters {
+  industries?: string[];
+  countries?: string[];
+  requiredTechnologies?: string[];
+  excludedDomains?: string[];
+}
+
 export interface DiscoveryRunJobPayload
-  extends Pick<CreateDiscoveryRunRequest, 'icpProfileId' | 'limit' | 'cursor' | 'requestedByUserId'> {
+  extends Pick<CreateDiscoveryRunRequest, 'icpProfileId' | 'provider' | 'limit' | 'cursor' | 'requestedByUserId'> {
   runId: string;
   correlationId?: string;
-  filters?: DiscoveryIcpFilters;
+  filters?: DiscoveryRunFilters;
 }
 
 export interface DiscoveryRunLogger {
@@ -46,9 +64,39 @@ export interface DiscoveryRunLogger {
 
 export interface DiscoveryRunDependencies {
   boss: Pick<PgBoss, 'send'>;
-  discoveryAdapter: ApolloDiscoveryAdapter;
+  apolloAdapter: ApolloDiscoveryAdapter;
+  googleSearchAdapter: GoogleSearchAdapter;
+  linkedInScrapeAdapter: LinkedInScrapeAdapter;
+  companySearchAdapter: CompanySearchAdapter;
   discoveryEnabled: boolean;
+  apolloEnabled: boolean;
+  googleSearchEnabled: boolean;
+  linkedInScrapeEnabled: boolean;
+  companySearchEnabled: boolean;
+  defaultProvider: DiscoveryProvider;
+  defaultEnrichmentProvider: EnrichmentProvider;
   defaultLimit?: number;
+}
+
+interface NormalizedDiscoveredLead {
+  provider: string;
+  providerRecordId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  title: string | null;
+  companyName: string | null;
+  companyDomain: string | null;
+  companySize: number | null;
+  country: string | null;
+  raw: unknown;
+}
+
+interface DiscoveryExecutionResult {
+  provider: DiscoveryProvider;
+  source: string;
+  leads: NormalizedDiscoveredLead[];
+  nextCursor: string | null;
 }
 
 function deriveLeadName(email: string): { firstName: string; lastName: string } {
@@ -65,6 +113,200 @@ function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
 }
 
+function toApolloRequest(
+  payload: DiscoveryRunJobPayload,
+  limit: number,
+  correlationId: string,
+): ApolloDiscoveryRequest {
+  const request: ApolloDiscoveryRequest = {
+    limit,
+    correlationId,
+  };
+
+  if (payload.icpProfileId) {
+    request.icpProfileId = payload.icpProfileId;
+  }
+  if (payload.cursor) {
+    request.cursor = payload.cursor;
+  }
+  if (payload.filters) {
+    request.filters = payload.filters;
+  }
+
+  return request;
+}
+
+function toGoogleSearchRequest(
+  payload: DiscoveryRunJobPayload,
+  limit: number,
+  correlationId: string,
+): GoogleSearchDiscoveryRequest {
+  const request: GoogleSearchDiscoveryRequest = {
+    limit,
+    correlationId,
+  };
+
+  if (payload.icpProfileId) {
+    request.icpProfileId = payload.icpProfileId;
+  }
+  if (payload.cursor) {
+    request.cursor = payload.cursor;
+  }
+  if (payload.filters) {
+    request.filters = payload.filters;
+    if (payload.filters.industries?.[0]) {
+      request.query = payload.filters.industries[0];
+    }
+  }
+
+  return request;
+}
+
+function toLinkedInRequest(
+  payload: DiscoveryRunJobPayload,
+  limit: number,
+  correlationId: string,
+): LinkedInScrapeDiscoveryRequest {
+  const request: LinkedInScrapeDiscoveryRequest = {
+    limit,
+    correlationId,
+  };
+
+  if (payload.icpProfileId) {
+    request.icpProfileId = payload.icpProfileId;
+  }
+  if (payload.cursor) {
+    request.cursor = payload.cursor;
+  }
+  if (payload.filters) {
+    request.filters = payload.filters;
+    if (payload.filters.industries?.[0]) {
+      request.query = `${payload.filters.industries[0]} sales`;
+    }
+  }
+
+  return request;
+}
+
+function toCompanySearchRequest(
+  payload: DiscoveryRunJobPayload,
+  limit: number,
+  correlationId: string,
+): CompanySearchDiscoveryRequest {
+  const request: CompanySearchDiscoveryRequest = {
+    limit,
+    correlationId,
+  };
+
+  if (payload.icpProfileId) {
+    request.icpProfileId = payload.icpProfileId;
+  }
+  if (payload.cursor) {
+    request.cursor = payload.cursor;
+  }
+  if (payload.filters) {
+    request.filters = payload.filters;
+    if (payload.filters.industries?.[0]) {
+      request.query = payload.filters.industries[0];
+    }
+  }
+
+  return request;
+}
+
+async function executeDiscoveryProvider(
+  payload: DiscoveryRunJobPayload,
+  provider: DiscoveryProvider,
+  limit: number,
+  correlationId: string,
+  dependencies: DiscoveryRunDependencies,
+  logger: DiscoveryRunLogger,
+  jobId: string,
+): Promise<DiscoveryExecutionResult> {
+  switch (provider) {
+    case 'GOOGLE_SEARCH': {
+      if (!dependencies.googleSearchEnabled) {
+        logger.warn(
+          { jobId, runId: payload.runId, correlationId, provider },
+          'Skipping discovery provider because it is disabled',
+        );
+        return { provider, source: 'disabled', leads: [], nextCursor: null };
+      }
+
+      const result = await dependencies.googleSearchAdapter.discoverLeads(
+        toGoogleSearchRequest(payload, limit, correlationId),
+      );
+      return {
+        provider,
+        source: result.source,
+        leads: result.leads,
+        nextCursor: result.nextCursor,
+      };
+    }
+
+    case 'LINKEDIN_SCRAPE': {
+      if (!dependencies.linkedInScrapeEnabled) {
+        logger.warn(
+          { jobId, runId: payload.runId, correlationId, provider },
+          'Skipping discovery provider because it is disabled',
+        );
+        return { provider, source: 'disabled', leads: [], nextCursor: null };
+      }
+
+      const result = await dependencies.linkedInScrapeAdapter.discoverLeads(
+        toLinkedInRequest(payload, limit, correlationId),
+      );
+      return {
+        provider,
+        source: result.source,
+        leads: result.leads,
+        nextCursor: result.nextCursor,
+      };
+    }
+
+    case 'COMPANY_SEARCH_FREE': {
+      if (!dependencies.companySearchEnabled) {
+        logger.warn(
+          { jobId, runId: payload.runId, correlationId, provider },
+          'Skipping discovery provider because it is disabled',
+        );
+        return { provider, source: 'disabled', leads: [], nextCursor: null };
+      }
+
+      const result = await dependencies.companySearchAdapter.discoverLeads(
+        toCompanySearchRequest(payload, limit, correlationId),
+      );
+      return {
+        provider,
+        source: result.source,
+        leads: result.leads,
+        nextCursor: result.nextCursor,
+      };
+    }
+
+    case 'APOLLO':
+    default: {
+      if (!dependencies.apolloEnabled) {
+        logger.warn(
+          { jobId, runId: payload.runId, correlationId, provider },
+          'Skipping discovery provider because it is disabled',
+        );
+        return { provider: 'APOLLO', source: 'disabled', leads: [], nextCursor: null };
+      }
+
+      const result = await dependencies.apolloAdapter.discoverLeads(
+        toApolloRequest(payload, limit, correlationId),
+      );
+      return {
+        provider: 'APOLLO',
+        source: 'apollo',
+        leads: result.leads,
+        nextCursor: result.nextCursor,
+      };
+    }
+  }
+}
+
 export async function handleDiscoveryRunJob(
   logger: DiscoveryRunLogger,
   job: Job<DiscoveryRunJobPayload>,
@@ -72,6 +314,7 @@ export async function handleDiscoveryRunJob(
 ): Promise<void> {
   const { runId, correlationId, icpProfileId } = job.data;
   const effectiveCorrelationId = correlationId ?? job.id;
+  const selectedProvider = job.data.provider ?? dependencies.defaultProvider;
 
   logger.info(
     {
@@ -80,6 +323,7 @@ export async function handleDiscoveryRunJob(
       runId,
       correlationId: effectiveCorrelationId,
       icpProfileId,
+      provider: selectedProvider,
       cursor: job.data.cursor ?? null,
     },
     'Started discovery.run job',
@@ -100,21 +344,15 @@ export async function handleDiscoveryRunJob(
   const requestedLimit = job.data.limit ?? dependencies.defaultLimit ?? DEFAULT_DISCOVERY_LIMIT;
 
   try {
-    const discoveryRequest: ApolloDiscoveryRequest = {
-      icpProfileId,
-      limit: requestedLimit,
-      correlationId: effectiveCorrelationId,
-    };
-
-    if (job.data.cursor) {
-      discoveryRequest.cursor = job.data.cursor;
-    }
-
-    if (job.data.filters) {
-      discoveryRequest.filters = job.data.filters;
-    }
-
-    const discoveryResult = await dependencies.discoveryAdapter.discoverLeads(discoveryRequest);
+    const discoveryResult = await executeDiscoveryProvider(
+      job.data,
+      selectedProvider,
+      requestedLimit,
+      effectiveCorrelationId,
+      dependencies,
+      logger,
+      job.id,
+    );
 
     let createdLeads = 0;
     let enqueuedEnrichmentJobs = 0;
@@ -128,13 +366,13 @@ export async function handleDiscoveryRunJob(
           firstName: discoveredLead.firstName || fallbackName.firstName,
           lastName: discoveredLead.lastName || fallbackName.lastName,
           email: discoveredLead.email,
-          source: 'apollo',
+          source: selectedProvider.toLowerCase(),
           status: 'new',
         },
         update: {
           firstName: discoveredLead.firstName || fallbackName.firstName,
           lastName: discoveredLead.lastName || fallbackName.lastName,
-          source: 'apollo',
+          source: selectedProvider.toLowerCase(),
         },
       });
 
@@ -150,6 +388,8 @@ export async function handleDiscoveryRunJob(
             runId,
             correlationId: effectiveCorrelationId,
             icpProfileId: icpProfileId ?? null,
+            selectedProvider,
+            providerSource: discoveryResult.source,
             provider: discoveredLead.provider,
             providerRecordId: discoveredLead.providerRecordId,
             raw: discoveredLead.raw,
@@ -170,7 +410,7 @@ export async function handleDiscoveryRunJob(
           payload: {
             runId,
             leadId: lead.id,
-            provider: 'PEOPLE_DATA_LABS',
+            provider: dependencies.defaultEnrichmentProvider,
             correlationId: effectiveCorrelationId,
             jobExecutionId: null,
             discoveryRecordId: discoveryRecordExecution.id,
@@ -183,7 +423,7 @@ export async function handleDiscoveryRunJob(
       const enrichmentPayload: EnrichmentRunJobPayload = {
         runId,
         leadId: lead.id,
-        provider: 'PEOPLE_DATA_LABS',
+        provider: dependencies.defaultEnrichmentProvider,
         correlationId: effectiveCorrelationId,
         jobExecutionId: enrichmentJobExecution.id,
         discoveryRecordId: discoveryRecordExecution.id,
@@ -198,7 +438,7 @@ export async function handleDiscoveryRunJob(
       });
 
       await dependencies.boss.send(ENRICHMENT_RUN_JOB_NAME, enrichmentPayload, {
-        singletonKey: `enrichment.run:${lead.id}:PEOPLE_DATA_LABS`,
+        singletonKey: `enrichment.run:${lead.id}:${dependencies.defaultEnrichmentProvider}`,
         ...ENRICHMENT_RUN_RETRY_OPTIONS,
       });
 
@@ -224,6 +464,7 @@ export async function handleDiscoveryRunJob(
         queue: job.name,
         runId,
         correlationId: effectiveCorrelationId,
+        provider: selectedProvider,
         createdLeads,
         enqueuedEnrichmentJobs,
         nextCursor: discoveryResult.nextCursor,
@@ -231,16 +472,22 @@ export async function handleDiscoveryRunJob(
       'Completed discovery.run job',
     );
   } catch (error: unknown) {
-    if (error instanceof ApolloRateLimitError) {
+    if (
+      error instanceof ApolloRateLimitError ||
+      error instanceof GoogleSearchRateLimitError ||
+      error instanceof LinkedInScrapeRateLimitError
+    ) {
       logger.warn(
         {
           jobId: job.id,
           queue: job.name,
           runId,
           correlationId: effectiveCorrelationId,
-          retryAfterSeconds: error.retryAfterSeconds,
+          provider: selectedProvider,
+          retryAfterSeconds:
+            'retryAfterSeconds' in error ? error.retryAfterSeconds : undefined,
         },
-        'Apollo rate limit reached during discovery.run job',
+        'Provider rate limit reached during discovery.run job',
       );
     }
 

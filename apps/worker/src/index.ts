@@ -1,7 +1,16 @@
 import PgBoss, { type Job } from 'pg-boss';
 
 import { createLogger } from '@lead-flood/observability';
-import { ApolloDiscoveryAdapter, PdlEnrichmentAdapter } from '@lead-flood/providers';
+import {
+  ApolloDiscoveryAdapter,
+  CompanySearchAdapter,
+  GoogleSearchAdapter,
+  LinkedInScrapeAdapter,
+  ClearbitAdapter,
+  HunterAdapter,
+  PdlEnrichmentAdapter,
+  PublicWebLookupAdapter,
+} from '@lead-flood/providers';
 
 import { loadWorkerEnv } from './env.js';
 import {
@@ -103,16 +112,51 @@ async function main(): Promise<void> {
   await ensureWorkerQueues(boss);
   await registerWorkerSchedules(boss);
 
-  const discoveryAdapter = new ApolloDiscoveryAdapter({
-    apiKey: env.APOLLO_API_KEY,
+  const apolloAdapter = new ApolloDiscoveryAdapter({
+    apiKey: env.APOLLO_API_KEY ?? '',
     baseUrl: env.APOLLO_BASE_URL,
     minRequestIntervalMs: env.APOLLO_RATE_LIMIT_MS,
   });
 
-  const enrichmentAdapter = new PdlEnrichmentAdapter({
-    apiKey: env.PDL_API_KEY,
+  const googleSearchAdapter = new GoogleSearchAdapter({
+    apiKey: env.GOOGLE_SEARCH_API_KEY,
+    searchEngineId: env.GOOGLE_SEARCH_ENGINE_ID,
+    baseUrl: env.GOOGLE_SEARCH_BASE_URL,
+    minRequestIntervalMs: env.GOOGLE_SEARCH_RATE_LIMIT_MS,
+  });
+
+  const linkedInScrapeAdapter = new LinkedInScrapeAdapter({
+    enabled: env.LINKEDIN_SCRAPE_ENABLED,
+    scrapeEndpoint: env.LINKEDIN_SCRAPE_ENDPOINT,
+    apiKey: env.LINKEDIN_SCRAPE_API_KEY,
+  });
+
+  const companySearchAdapter = new CompanySearchAdapter({
+    enabled: env.COMPANY_SEARCH_ENABLED,
+    baseUrl: env.COMPANY_SEARCH_BASE_URL,
+  });
+
+  const pdlAdapter = new PdlEnrichmentAdapter({
+    apiKey: env.PDL_API_KEY ?? '',
     baseUrl: env.PDL_BASE_URL,
     minRequestIntervalMs: env.PDL_RATE_LIMIT_MS,
+  });
+
+  const hunterAdapter = new HunterAdapter({
+    apiKey: env.HUNTER_API_KEY,
+    baseUrl: env.HUNTER_BASE_URL,
+    minRequestIntervalMs: env.HUNTER_RATE_LIMIT_MS,
+  });
+
+  const clearbitAdapter = new ClearbitAdapter({
+    apiKey: env.CLEARBIT_API_KEY,
+    personBaseUrl: env.CLEARBIT_PERSON_BASE_URL,
+    companyBaseUrl: env.CLEARBIT_COMPANY_BASE_URL,
+  });
+
+  const publicWebLookupAdapter = new PublicWebLookupAdapter({
+    enabled: env.OTHER_FREE_ENRICHMENT_ENABLED,
+    baseUrl: env.PUBLIC_LOOKUP_BASE_URL,
   });
 
   let outboxDispatchRunning = false;
@@ -149,8 +193,17 @@ async function main(): Promise<void> {
   await registerWorker<DiscoveryRunJobPayload>(boss, logger, DISCOVERY_RUN_JOB_NAME, (jobLogger, job) =>
     handleDiscoveryRunJob(jobLogger, job, {
       boss,
-      discoveryAdapter,
+      apolloAdapter,
+      googleSearchAdapter,
+      linkedInScrapeAdapter,
+      companySearchAdapter,
       discoveryEnabled: env.DISCOVERY_ENABLED,
+      apolloEnabled: env.APOLLO_ENABLED,
+      googleSearchEnabled: env.GOOGLE_SEARCH_ENABLED,
+      linkedInScrapeEnabled: env.LINKEDIN_SCRAPE_ENABLED,
+      companySearchEnabled: env.COMPANY_SEARCH_ENABLED,
+      defaultProvider: env.DISCOVERY_DEFAULT_PROVIDER,
+      defaultEnrichmentProvider: env.ENRICHMENT_DEFAULT_PROVIDER,
     }),
   );
   await registerWorker<EnrichmentRunJobPayload>(
@@ -160,8 +213,16 @@ async function main(): Promise<void> {
     (jobLogger, job) =>
       handleEnrichmentRunJob(jobLogger, job, {
         boss,
-        enrichmentAdapter,
+        pdlAdapter,
+        hunterAdapter,
+        clearbitAdapter,
+        publicWebLookupAdapter,
         enrichmentEnabled: env.ENRICHMENT_ENABLED,
+        pdlEnabled: env.PDL_ENABLED,
+        hunterEnabled: env.HUNTER_ENABLED,
+        clearbitEnabled: env.CLEARBIT_ENABLED,
+        otherFreeEnabled: env.OTHER_FREE_ENRICHMENT_ENABLED,
+        defaultProvider: env.ENRICHMENT_DEFAULT_PROVIDER,
       }),
   );
   await registerWorker<FeaturesComputeJobPayload>(

@@ -35,8 +35,8 @@ export interface GoogleSearchDiscoveryResult {
 }
 
 export interface GoogleSearchAdapterConfig {
-  apiKey?: string;
-  searchEngineId?: string;
+  apiKey: string | undefined;
+  searchEngineId: string | undefined;
   baseUrl?: string;
   maxPageSize?: number;
   minRequestIntervalMs?: number;

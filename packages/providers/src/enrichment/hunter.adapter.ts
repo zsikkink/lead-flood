@@ -44,7 +44,7 @@ export type HunterEnrichmentResult =
     };
 
 export interface HunterAdapterConfig {
-  apiKey?: string;
+  apiKey: string | undefined;
   baseUrl?: string;
   minRequestIntervalMs?: number;
   timeoutMs?: number;

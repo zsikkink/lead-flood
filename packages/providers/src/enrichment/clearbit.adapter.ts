@@ -44,7 +44,7 @@ export type ClearbitEnrichmentResult =
     };
 
 export interface ClearbitAdapterConfig {
-  apiKey?: string;
+  apiKey: string | undefined;
   personBaseUrl?: string;
   companyBaseUrl?: string;
   timeoutMs?: number;

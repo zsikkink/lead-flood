@@ -1,6 +1,18 @@
-import type { CreateEnrichmentRunRequest } from '@lead-flood/contracts';
+import type {
+  CreateEnrichmentRunRequest,
+  EnrichmentProvider,
+} from '@lead-flood/contracts';
 import { Prisma, prisma } from '@lead-flood/db';
-import { PdlEnrichmentAdapter, type PdlEnrichmentRequest } from '@lead-flood/providers';
+import {
+  ClearbitAdapter,
+  HunterAdapter,
+  PdlEnrichmentAdapter,
+  PublicWebLookupAdapter,
+  type ClearbitEnrichmentRequest,
+  type HunterEnrichmentRequest,
+  type PdlEnrichmentRequest,
+  type PublicWebLookupEnrichmentRequest,
+} from '@lead-flood/providers';
 import type PgBoss from 'pg-boss';
 import type { Job, SendOptions } from 'pg-boss';
 
@@ -23,7 +35,7 @@ export const ENRICHMENT_RUN_RETRY_OPTIONS: Pick<
   deadLetter: 'enrichment.run.dead_letter',
 };
 
-const ENRICHMENT_RECORD_JOB_TYPE = 'lead.enrichment.pdl';
+const ENRICHMENT_RECORD_JOB_TYPE = 'lead.enrichment';
 
 export interface EnrichmentRunJobPayload
   extends Pick<CreateEnrichmentRunRequest, 'provider' | 'requestedByUserId'> {
@@ -43,8 +55,16 @@ export interface EnrichmentRunLogger {
 
 export interface EnrichmentRunDependencies {
   boss: Pick<PgBoss, 'send'>;
-  enrichmentAdapter: PdlEnrichmentAdapter;
+  pdlAdapter: PdlEnrichmentAdapter;
+  hunterAdapter: HunterAdapter;
+  clearbitAdapter: ClearbitAdapter;
+  publicWebLookupAdapter: PublicWebLookupAdapter;
   enrichmentEnabled: boolean;
+  pdlEnabled: boolean;
+  hunterEnabled: boolean;
+  clearbitEnabled: boolean;
+  otherFreeEnabled: boolean;
+  defaultProvider: EnrichmentProvider;
 }
 
 function domainFromEmail(email: string): string | undefined {
@@ -54,6 +74,227 @@ function domainFromEmail(email: string): string | undefined {
 
 function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+}
+
+interface UnifiedEnrichmentLead {
+  provider: string;
+  fullName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  title: string | null;
+  linkedinUrl: string | null;
+  companyName: string | null;
+  companyDomain: string | null;
+  companySize: number | null;
+  industry: string | null;
+  locationCountry: string | null;
+  raw: unknown;
+}
+
+interface UnifiedFailure {
+  statusCode: number | null;
+  message: string;
+}
+
+type UnifiedEnrichmentResult =
+  | {
+      status: 'success';
+      normalized: UnifiedEnrichmentLead;
+      raw: unknown;
+    }
+  | {
+      status: 'retryable_error' | 'terminal_error';
+      failure: UnifiedFailure;
+    };
+
+function toUnifiedFromPdl(result: Awaited<ReturnType<PdlEnrichmentAdapter['enrichLead']>>): UnifiedEnrichmentResult {
+  if (result.status === 'success') {
+    return {
+      status: 'success',
+      normalized: result.normalized,
+      raw: result.raw,
+    };
+  }
+
+  return {
+    status: result.status,
+    failure: {
+      statusCode: result.failure.statusCode,
+      message: result.failure.message,
+    },
+  };
+}
+
+function toUnifiedFromHunter(
+  result: Awaited<ReturnType<HunterAdapter['enrichLead']>>,
+): UnifiedEnrichmentResult {
+  if (result.status === 'success') {
+    return {
+      status: 'success',
+      normalized: result.normalized,
+      raw: result.raw,
+    };
+  }
+
+  return {
+    status: result.status,
+    failure: {
+      statusCode: result.failure.statusCode,
+      message: result.failure.message,
+    },
+  };
+}
+
+function toUnifiedFromClearbit(
+  result: Awaited<ReturnType<ClearbitAdapter['enrichLead']>>,
+): UnifiedEnrichmentResult {
+  if (result.status === 'success') {
+    return {
+      status: 'success',
+      normalized: result.normalized,
+      raw: result.raw,
+    };
+  }
+
+  return {
+    status: result.status,
+    failure: {
+      statusCode: result.failure.statusCode,
+      message: result.failure.message,
+    },
+  };
+}
+
+function toUnifiedFromPublicLookup(
+  result: Awaited<ReturnType<PublicWebLookupAdapter['enrichLead']>>,
+): UnifiedEnrichmentResult {
+  if (result.status === 'success') {
+    return {
+      status: 'success',
+      normalized: result.normalized,
+      raw: result.raw,
+    };
+  }
+
+  return {
+    status: result.status,
+    failure: {
+      statusCode: result.failure.statusCode,
+      message: result.failure.message,
+    },
+  };
+}
+
+async function executeEnrichmentProvider(
+  provider: EnrichmentProvider,
+  leadEmail: string,
+  correlationId: string,
+  dependencies: EnrichmentRunDependencies,
+): Promise<UnifiedEnrichmentResult> {
+  const domain = domainFromEmail(leadEmail);
+  const commonRequest: {
+    email: string;
+    correlationId: string;
+    domain?: string;
+  } = {
+    email: leadEmail,
+    correlationId,
+  };
+  if (domain) {
+    commonRequest.domain = domain;
+  }
+
+  switch (provider) {
+    case 'HUNTER': {
+      if (!dependencies.hunterEnabled) {
+        return {
+          status: 'terminal_error',
+          failure: {
+            statusCode: null,
+            message: 'HUNTER provider is disabled',
+          },
+        };
+      }
+
+      const request: HunterEnrichmentRequest = {
+        email: commonRequest.email,
+        correlationId: commonRequest.correlationId,
+      };
+      if (commonRequest.domain) {
+        request.domain = commonRequest.domain;
+      }
+
+      return toUnifiedFromHunter(await dependencies.hunterAdapter.enrichLead(request));
+    }
+
+    case 'CLEARBIT': {
+      if (!dependencies.clearbitEnabled) {
+        return {
+          status: 'terminal_error',
+          failure: {
+            statusCode: null,
+            message: 'CLEARBIT provider is disabled',
+          },
+        };
+      }
+
+      const request: ClearbitEnrichmentRequest = {
+        email: commonRequest.email,
+        correlationId: commonRequest.correlationId,
+      };
+      if (commonRequest.domain) {
+        request.domain = commonRequest.domain;
+      }
+
+      return toUnifiedFromClearbit(await dependencies.clearbitAdapter.enrichLead(request));
+    }
+
+    case 'OTHER_FREE': {
+      if (!dependencies.otherFreeEnabled) {
+        return {
+          status: 'terminal_error',
+          failure: {
+            statusCode: null,
+            message: 'OTHER_FREE provider is disabled',
+          },
+        };
+      }
+
+      const request: PublicWebLookupEnrichmentRequest = {
+        email: commonRequest.email,
+        correlationId: commonRequest.correlationId,
+      };
+      if (commonRequest.domain) {
+        request.domain = commonRequest.domain;
+      }
+
+      return toUnifiedFromPublicLookup(await dependencies.publicWebLookupAdapter.enrichLead(request));
+    }
+
+    case 'PEOPLE_DATA_LABS':
+    default: {
+      if (!dependencies.pdlEnabled) {
+        return {
+          status: 'terminal_error',
+          failure: {
+            statusCode: null,
+            message: 'PEOPLE_DATA_LABS provider is disabled',
+          },
+        };
+      }
+
+      const request: PdlEnrichmentRequest = {
+        email: commonRequest.email,
+        correlationId: commonRequest.correlationId,
+      };
+      if (commonRequest.domain) {
+        request.domain = commonRequest.domain;
+      }
+
+      return toUnifiedFromPdl(await dependencies.pdlAdapter.enrichLead(request));
+    }
+  }
 }
 
 async function markEnrichmentJobRunning(jobExecutionId: string): Promise<void> {
@@ -100,6 +341,7 @@ export async function handleEnrichmentRunJob(
 ): Promise<void> {
   const { runId, correlationId, leadId, provider, jobExecutionId, icpProfileId } = job.data;
   const effectiveCorrelationId = correlationId ?? job.id;
+  const selectedProvider = provider ?? dependencies.defaultProvider;
 
   logger.info(
     {
@@ -108,7 +350,7 @@ export async function handleEnrichmentRunJob(
       runId,
       correlationId: effectiveCorrelationId,
       leadId,
-      provider,
+      provider: selectedProvider,
       jobExecutionId: jobExecutionId ?? null,
     },
     'Started enrichment.run job',
@@ -149,17 +391,12 @@ export async function handleEnrichmentRunJob(
   }
 
   try {
-    const enrichmentRequest: PdlEnrichmentRequest = {
-      email: lead.email,
-      correlationId: effectiveCorrelationId,
-    };
-
-    const emailDomain = domainFromEmail(lead.email);
-    if (emailDomain) {
-      enrichmentRequest.domain = emailDomain;
-    }
-
-    const enrichmentResult = await dependencies.enrichmentAdapter.enrichLead(enrichmentRequest);
+    const enrichmentResult = await executeEnrichmentProvider(
+      selectedProvider,
+      lead.email,
+      effectiveCorrelationId,
+      dependencies,
+    );
 
     // TODO: Replace JobExecution fallback with LeadEnrichmentRecord once schema is available.
     const enrichmentRecordExecution = await prisma.jobExecution.create({
@@ -170,7 +407,7 @@ export async function handleEnrichmentRunJob(
         payload: {
           runId,
           correlationId: effectiveCorrelationId,
-          provider: provider ?? 'PEOPLE_DATA_LABS',
+          provider: selectedProvider,
           leadId,
         },
         result: toInputJson(enrichmentResult),
@@ -257,6 +494,7 @@ export async function handleEnrichmentRunJob(
           queue: job.name,
           runId,
           correlationId: effectiveCorrelationId,
+          provider: selectedProvider,
           leadId,
           statusCode: enrichmentResult.failure.statusCode,
         },
@@ -271,6 +509,7 @@ export async function handleEnrichmentRunJob(
         queue: job.name,
         runId,
         correlationId: effectiveCorrelationId,
+        provider: selectedProvider,
         leadId,
         statusCode: enrichmentResult.failure.statusCode,
       },
