@@ -41,6 +41,7 @@ export interface FeaturesComputeLogger {
 
 export interface FeaturesComputeDependencies {
   boss: Pick<PgBoss, 'send'>;
+  enqueueScoring?: boolean;
 }
 
 export const FEATURE_EXTRACTOR_VERSION = 'features_v1';
@@ -378,30 +379,32 @@ export async function handleFeaturesComputeJob(
       },
     });
 
-    const scoringPayload: ScoringComputeJobPayload = {
-      runId,
-      mode: 'BY_LEAD_IDS',
-      icpProfileId,
-      leadIds: [leadId],
-      correlationId: effectiveCorrelationId,
-    };
+    if (dependencies.enqueueScoring !== false) {
+      const scoringPayload: ScoringComputeJobPayload = {
+        runId,
+        mode: 'BY_LEAD_IDS',
+        icpProfileId,
+        leadIds: [leadId],
+        correlationId: effectiveCorrelationId,
+      };
 
-    await prisma.jobExecution.create({
-      data: {
-        type: SCORING_COMPUTE_JOB_NAME,
-        status: 'queued',
-        payload: toInputJson({
-          ...scoringPayload,
-          featureSnapshotId: snapshot.id,
-        }),
-        leadId,
-      },
-    });
+      await prisma.jobExecution.create({
+        data: {
+          type: SCORING_COMPUTE_JOB_NAME,
+          status: 'queued',
+          payload: toInputJson({
+            ...scoringPayload,
+            featureSnapshotId: snapshot.id,
+          }),
+          leadId,
+        },
+      });
 
-    await dependencies.boss.send(SCORING_COMPUTE_JOB_NAME, scoringPayload, {
-      singletonKey: `scoring.compute:${runId}:${leadId}:${icpProfileId}`,
-      ...SCORING_COMPUTE_RETRY_OPTIONS,
-    });
+      await dependencies.boss.send(SCORING_COMPUTE_JOB_NAME, scoringPayload, {
+        singletonKey: `scoring.compute:${runId}:${leadId}:${icpProfileId}`,
+        ...SCORING_COMPUTE_RETRY_OPTIONS,
+      });
+    }
 
     logger.info(
       {
