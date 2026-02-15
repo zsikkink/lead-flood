@@ -30,6 +30,85 @@ enum OutboxStatus {
   dead_letter
 }
 
+enum QualificationRuleType {
+  WEIGHTED
+  HARD_FILTER
+}
+
+enum QualificationOperator {
+  EQ
+  NEQ
+  GT
+  GTE
+  LT
+  LTE
+  IN
+  NOT_IN
+  CONTAINS
+}
+
+enum DiscoveryProvider {
+  GOOGLE_SEARCH
+  LINKEDIN_SCRAPE
+  COMPANY_SEARCH_FREE
+  APOLLO
+}
+
+enum DiscoveryRecordStatus {
+  DISCOVERED
+  DUPLICATE
+  REJECTED
+  ERROR
+}
+
+enum EnrichmentProvider {
+  HUNTER
+  CLEARBIT
+  OTHER_FREE
+  PEOPLE_DATA_LABS
+}
+
+enum EnrichmentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum TrainingRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum TrainingTrigger {
+  MANUAL
+  SCHEDULED
+  FEEDBACK_THRESHOLD
+}
+
+enum ModelType {
+  LOGISTIC_REGRESSION
+}
+
+enum ModelStage {
+  SHADOW
+  ACTIVE
+  ARCHIVED
+}
+
+enum EvaluationSplit {
+  TRAIN
+  VALIDATION
+  TEST
+}
+
+enum ScoreBand {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 model User {
   id          String    @id @default(cuid())
   email       String    @unique
@@ -40,6 +119,8 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   sessions    Session[]
+  createdIcpProfiles IcpProfile[] @relation("IcpCreatedBy")
+  triggeredTrainingRuns TrainingRun[] @relation("TrainingRunTriggeredBy")
 
   @@index([email])
 }
@@ -68,6 +149,10 @@ model Lead {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   jobs           JobExecution[]
+  discoveryRecords LeadDiscoveryRecord[]
+  enrichmentRecords LeadEnrichmentRecord[]
+  featureSnapshots LeadFeatureSnapshot[]
+  scorePredictions LeadScorePrediction[]
 
   @@index([status])
   @@index([source])
@@ -107,4 +192,218 @@ model OutboxEvent {
 
   @@index([status, createdAt])
   @@index([nextAttemptAt])
+}
+
+model IcpProfile {
+  id                   String               @id @default(cuid())
+  name                 String
+  description          String?
+  targetIndustries     String[]             @default([])
+  targetCountries      String[]             @default([])
+  minCompanySize       Int?
+  maxCompanySize       Int?
+  requiredTechnologies String[]             @default([])
+  excludedDomains      String[]             @default([])
+  isActive             Boolean              @default(true)
+  createdByUserId      String?
+  createdByUser        User?                @relation("IcpCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  qualificationRules   QualificationRule[]
+  discoveryRecords     LeadDiscoveryRecord[]
+  featureSnapshots     LeadFeatureSnapshot[]
+  scorePredictions     LeadScorePrediction[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([isActive])
+  @@index([name])
+}
+
+model QualificationRule {
+  id           String                @id @default(cuid())
+  icpProfileId String
+  icpProfile   IcpProfile            @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
+  name         String
+  ruleType     QualificationRuleType
+  fieldKey     String
+  operator     QualificationOperator
+  valueJson    Json
+  weight       Float?
+  isActive     Boolean               @default(true)
+  priority     Int                   @default(100)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([icpProfileId, isActive, priority])
+}
+
+model LeadDiscoveryRecord {
+  id               String              @id @default(cuid())
+  leadId           String
+  lead             Lead                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  icpProfileId     String
+  icpProfile       IcpProfile          @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
+  provider         DiscoveryProvider
+  providerRecordId String
+  providerCursor   String?
+  queryHash        String
+  status           DiscoveryRecordStatus @default(DISCOVERED)
+  rawPayload       Json
+  errorMessage     String?
+  discoveredAt     DateTime            @default(now())
+  createdAt        DateTime            @default(now())
+
+  featureSnapshots LeadFeatureSnapshot[]
+
+  @@unique([leadId, icpProfileId, provider, providerRecordId])
+  @@index([leadId, discoveredAt])
+  @@index([icpProfileId, discoveredAt])
+  @@index([provider, status])
+}
+
+model LeadEnrichmentRecord {
+  id                String            @id @default(cuid())
+  leadId            String
+  lead              Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  provider          EnrichmentProvider
+  status            EnrichmentStatus  @default(PENDING)
+  attempt           Int               @default(1)
+  providerRecordId  String?
+  normalizedPayload Json?
+  rawPayload        Json?
+  errorCode         String?
+  errorMessage      String?
+  enrichedAt        DateTime?
+  requestKey        String            @unique
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  featureSnapshots  LeadFeatureSnapshot[]
+
+  @@index([leadId, provider, createdAt])
+  @@index([leadId, provider, status])
+}
+
+model LeadFeatureSnapshot {
+  id                String              @id @default(cuid())
+  leadId            String
+  lead              Lead                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  icpProfileId      String
+  icpProfile        IcpProfile          @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
+  discoveryRecordId String?
+  discoveryRecord   LeadDiscoveryRecord? @relation(fields: [discoveryRecordId], references: [id], onDelete: SetNull)
+  enrichmentRecordId String?
+  enrichmentRecord  LeadEnrichmentRecord? @relation(fields: [enrichmentRecordId], references: [id], onDelete: SetNull)
+  snapshotVersion   Int
+  sourceVersion     String
+  featureVectorHash String
+  featuresJson      Json
+  ruleMatchCount    Int                 @default(0)
+  hardFilterPassed  Boolean             @default(false)
+  computedAt        DateTime            @default(now())
+  createdAt         DateTime            @default(now())
+
+  scorePredictions  LeadScorePrediction[]
+
+  @@unique([leadId, icpProfileId, snapshotVersion, sourceVersion, featureVectorHash])
+  @@index([leadId, icpProfileId, computedAt])
+  @@index([featureVectorHash])
+}
+
+model TrainingRun {
+  id                 String            @id @default(cuid())
+  modelType          ModelType         @default(LOGISTIC_REGRESSION)
+  status             TrainingRunStatus @default(QUEUED)
+  trigger            TrainingTrigger
+  triggeredByUserId  String?
+  triggeredByUser    User?             @relation("TrainingRunTriggeredBy", fields: [triggeredByUserId], references: [id], onDelete: SetNull)
+  configJson         Json
+  trainingWindowStart DateTime
+  trainingWindowEnd  DateTime
+  datasetSize        Int               @default(0)
+  positiveCount      Int               @default(0)
+  negativeCount      Int               @default(0)
+  startedAt          DateTime?
+  endedAt            DateTime?
+  errorMessage       String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  modelVersions      ModelVersion[]
+  evaluations        ModelEvaluation[]
+
+  @@index([status, createdAt])
+}
+
+model ModelVersion {
+  id                     String              @id @default(cuid())
+  trainingRunId          String
+  trainingRun            TrainingRun         @relation(fields: [trainingRunId], references: [id], onDelete: Cascade)
+  modelType              ModelType           @default(LOGISTIC_REGRESSION)
+  versionTag             String              @unique
+  stage                  ModelStage          @default(SHADOW)
+  featureSchemaJson      Json
+  coefficientsJson       Json?
+  intercept              Float?
+  deterministicWeightsJson Json
+  artifactUri            String?
+  checksum               String
+  trainedAt              DateTime            @default(now())
+  activatedAt            DateTime?
+  retiredAt              DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  evaluations            ModelEvaluation[]
+  scorePredictions       LeadScorePrediction[]
+
+  @@index([modelType, stage])
+}
+
+model ModelEvaluation {
+  id                  String          @id @default(cuid())
+  modelVersionId      String
+  modelVersion        ModelVersion    @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+  trainingRunId       String
+  trainingRun         TrainingRun     @relation(fields: [trainingRunId], references: [id], onDelete: Cascade)
+  split               EvaluationSplit
+  sampleSize          Int
+  positiveRate        Float
+  auc                 Float
+  prAuc               Float
+  precision           Float
+  recall              Float
+  f1                  Float
+  brierScore          Float
+  calibrationJson     Json?
+  confusionMatrixJson Json?
+  evaluatedAt         DateTime        @default(now())
+  createdAt           DateTime        @default(now())
+
+  @@index([modelVersionId, split])
+  @@index([trainingRunId, split])
+}
+
+model LeadScorePrediction {
+  id                String             @id @default(cuid())
+  leadId            String
+  lead              Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  icpProfileId      String
+  icpProfile        IcpProfile         @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
+  featureSnapshotId String
+  featureSnapshot   LeadFeatureSnapshot @relation(fields: [featureSnapshotId], references: [id], onDelete: Cascade)
+  modelVersionId    String
+  modelVersion      ModelVersion       @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+  deterministicScore Float
+  logisticScore     Float
+  blendedScore      Float
+  scoreBand         ScoreBand
+  reasonsJson       Json
+  ruleEvaluationJson Json?
+  predictedAt       DateTime           @default(now())
+  createdAt         DateTime           @default(now())
+
+  @@unique([leadId, icpProfileId, featureSnapshotId, modelVersionId])
+  @@index([leadId, predictedAt])
+  @@index([icpProfileId, predictedAt])
+  @@index([modelVersionId, predictedAt])
 }
