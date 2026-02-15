@@ -17,6 +17,10 @@ const env: ApiEnv = {
   PG_BOSS_SCHEMA: 'pgboss',
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5434/lead_flood',
   DIRECT_URL: 'postgresql://postgres:postgres@localhost:5434/lead_flood',
+  APOLLO_API_KEY: 'apollo-test-key',
+  PDL_API_KEY: 'pdl-test-key',
+  DISCOVERY_ENABLED: true,
+  ENRICHMENT_ENABLED: true,
 };
 
 const makeDefaultOptions = (): BuildServerOptions => ({

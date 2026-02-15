@@ -11,6 +11,10 @@ const ApiEnvSchema = z.object({
   PG_BOSS_SCHEMA: z.string().min(1).default('pgboss'),
   DATABASE_URL: z.string().min(1),
   DIRECT_URL: z.string().min(1),
+  APOLLO_API_KEY: z.string().min(1),
+  PDL_API_KEY: z.string().min(1),
+  DISCOVERY_ENABLED: z.coerce.boolean().default(true),
+  ENRICHMENT_ENABLED: z.coerce.boolean().default(true),
 });
 
 export type ApiEnv = z.infer<typeof ApiEnvSchema>;

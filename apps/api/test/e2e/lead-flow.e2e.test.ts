@@ -29,6 +29,10 @@ const env: ApiEnv = {
   PG_BOSS_SCHEMA: process.env.PG_BOSS_SCHEMA ?? 'pgboss',
   DATABASE_URL: databaseUrl,
   DIRECT_URL: directUrl,
+  APOLLO_API_KEY: 'apollo-test-key',
+  PDL_API_KEY: 'pdl-test-key',
+  DISCOVERY_ENABLED: true,
+  ENRICHMENT_ENABLED: true,
 };
 
 function sleep(milliseconds: number): Promise<void> {

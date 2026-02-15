@@ -100,6 +100,9 @@ importers:
       '@lead-flood/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@lead-flood/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       pg-boss:
         specifier: ^10.3.0
         version: 10.4.2
@@ -137,6 +140,12 @@ importers:
       pino:
         specifier: ^9.6.0
         version: 9.14.0
+
+  packages/providers:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
 
   packages/testkit: {}
 

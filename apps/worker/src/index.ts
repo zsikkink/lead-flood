@@ -1,6 +1,7 @@
 import PgBoss, { type Job } from 'pg-boss';
 
 import { createLogger } from '@lead-flood/observability';
+import { ApolloDiscoveryAdapter, PdlEnrichmentAdapter } from '@lead-flood/providers';
 
 import { loadWorkerEnv } from './env.js';
 import {
@@ -102,6 +103,18 @@ async function main(): Promise<void> {
   await ensureWorkerQueues(boss);
   await registerWorkerSchedules(boss);
 
+  const discoveryAdapter = new ApolloDiscoveryAdapter({
+    apiKey: env.APOLLO_API_KEY,
+    baseUrl: env.APOLLO_BASE_URL,
+    minRequestIntervalMs: env.APOLLO_RATE_LIMIT_MS,
+  });
+
+  const enrichmentAdapter = new PdlEnrichmentAdapter({
+    apiKey: env.PDL_API_KEY,
+    baseUrl: env.PDL_BASE_URL,
+    minRequestIntervalMs: env.PDL_RATE_LIMIT_MS,
+  });
+
   let outboxDispatchRunning = false;
   const runOutboxDispatch = async (): Promise<void> => {
     if (outboxDispatchRunning) {
@@ -133,12 +146,23 @@ async function main(): Promise<void> {
     LEAD_ENRICH_STUB_QUEUE_NAME,
     handleLeadEnrichJob,
   );
-  await registerWorker<DiscoveryRunJobPayload>(boss, logger, DISCOVERY_RUN_JOB_NAME, handleDiscoveryRunJob);
+  await registerWorker<DiscoveryRunJobPayload>(boss, logger, DISCOVERY_RUN_JOB_NAME, (jobLogger, job) =>
+    handleDiscoveryRunJob(jobLogger, job, {
+      boss,
+      discoveryAdapter,
+      discoveryEnabled: env.DISCOVERY_ENABLED,
+    }),
+  );
   await registerWorker<EnrichmentRunJobPayload>(
     boss,
     logger,
     ENRICHMENT_RUN_JOB_NAME,
-    handleEnrichmentRunJob,
+    (jobLogger, job) =>
+      handleEnrichmentRunJob(jobLogger, job, {
+        boss,
+        enrichmentAdapter,
+        enrichmentEnabled: env.ENRICHMENT_ENABLED,
+      }),
   );
   await registerWorker<FeaturesComputeJobPayload>(
     boss,

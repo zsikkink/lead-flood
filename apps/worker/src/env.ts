@@ -6,6 +6,14 @@ const WorkerEnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   PG_BOSS_SCHEMA: z.string().min(1).default('pgboss'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  APOLLO_API_KEY: z.string().min(1),
+  APOLLO_BASE_URL: z.string().url().default('https://api.apollo.io'),
+  APOLLO_RATE_LIMIT_MS: z.coerce.number().int().min(0).default(250),
+  PDL_API_KEY: z.string().min(1),
+  PDL_BASE_URL: z.string().url().default('https://api.peopledatalabs.com'),
+  PDL_RATE_LIMIT_MS: z.coerce.number().int().min(0).default(250),
+  DISCOVERY_ENABLED: z.coerce.boolean().default(true),
+  ENRICHMENT_ENABLED: z.coerce.boolean().default(true),
 });
 
 export type WorkerEnv = z.infer<typeof WorkerEnvSchema>;
