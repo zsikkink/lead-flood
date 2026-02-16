@@ -1,28 +1,96 @@
+import { Prisma, prisma } from '@lead-flood/db';
 import type {
   CreateDiscoveryRunRequest,
-  CreateDiscoveryRunResponse,
   DiscoveryRunStatusResponse,
   ListDiscoveryRecordsQuery,
   ListDiscoveryRecordsResponse,
+  PipelineRunStatus,
 } from '@lead-flood/contracts';
-import { prisma } from '@lead-flood/db';
 
-import { DiscoveryNotImplementedError } from './discovery.errors.js';
+import { DiscoveryNotImplementedError, DiscoveryRunNotFoundError } from './discovery.errors.js';
+import type { DiscoveryRunJobPayload } from './discovery.service.js';
+
+const DISCOVERY_RUN_JOB_TYPE = 'discovery.run';
+
+interface DiscoveryRunProgress {
+  totalItems: number;
+  processedItems: number;
+  failedItems: number;
+}
 
 function toDayStart(value: string): Date {
   const source = new Date(value);
   return new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth(), source.getUTCDate()));
 }
 
+function toInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+}
+
+function toCount(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+
+  return 0;
+}
+
+function readRunProgress(result: unknown): DiscoveryRunProgress {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return {
+      totalItems: 0,
+      processedItems: 0,
+      failedItems: 0,
+    };
+  }
+
+  const payload = result as Record<string, unknown>;
+  return {
+    totalItems: toCount(payload.totalItems),
+    processedItems: toCount(payload.processedItems),
+    failedItems: toCount(payload.failedItems),
+  };
+}
+
+function mapJobStatusToPipelineStatus(
+  status: 'queued' | 'running' | 'completed' | 'failed',
+  failedItems: number,
+): PipelineRunStatus {
+  switch (status) {
+    case 'queued':
+      return 'QUEUED';
+    case 'running':
+      return 'RUNNING';
+    case 'failed':
+      return 'FAILED';
+    case 'completed':
+    default:
+      return failedItems > 0 ? 'PARTIAL' : 'SUCCEEDED';
+  }
+}
+
 export interface DiscoveryRepository {
-  createDiscoveryRun(input: CreateDiscoveryRunRequest): Promise<CreateDiscoveryRunResponse>;
+  createDiscoveryRun(
+    runId: string,
+    input: CreateDiscoveryRunRequest,
+    payload: DiscoveryRunJobPayload,
+  ): Promise<void>;
+  markDiscoveryRunFailed(runId: string, message: string): Promise<void>;
   getDiscoveryRunStatus(runId: string): Promise<DiscoveryRunStatusResponse>;
   listDiscoveryRecords(query: ListDiscoveryRecordsQuery): Promise<ListDiscoveryRecordsResponse>;
 }
 
 export class StubDiscoveryRepository implements DiscoveryRepository {
-  async createDiscoveryRun(_input: CreateDiscoveryRunRequest): Promise<CreateDiscoveryRunResponse> {
+  async createDiscoveryRun(
+    _runId: string,
+    _input: CreateDiscoveryRunRequest,
+    _payload: DiscoveryRunJobPayload,
+  ): Promise<void> {
     throw new DiscoveryNotImplementedError('TODO: create discovery run persistence');
+  }
+
+  async markDiscoveryRunFailed(_runId: string, _message: string): Promise<void> {
+    throw new DiscoveryNotImplementedError('TODO: mark discovery run failed persistence');
   }
 
   async getDiscoveryRunStatus(_runId: string): Promise<DiscoveryRunStatusResponse> {
@@ -35,12 +103,67 @@ export class StubDiscoveryRepository implements DiscoveryRepository {
 }
 
 export class PrismaDiscoveryRepository implements DiscoveryRepository {
-  async createDiscoveryRun(_input: CreateDiscoveryRunRequest): Promise<CreateDiscoveryRunResponse> {
-    throw new DiscoveryNotImplementedError('TODO: create discovery run persistence');
+  async createDiscoveryRun(
+    runId: string,
+    _input: CreateDiscoveryRunRequest,
+    payload: DiscoveryRunJobPayload,
+  ): Promise<void> {
+    await prisma.jobExecution.create({
+      data: {
+        id: runId,
+        type: DISCOVERY_RUN_JOB_TYPE,
+        status: 'queued',
+        attempts: 0,
+        payload: toInputJson(payload),
+        result: toInputJson({
+          totalItems: 0,
+          processedItems: 0,
+          failedItems: 0,
+        }),
+        error: null,
+      },
+    });
   }
 
-  async getDiscoveryRunStatus(_runId: string): Promise<DiscoveryRunStatusResponse> {
-    throw new DiscoveryNotImplementedError('TODO: get discovery run status persistence');
+  async markDiscoveryRunFailed(runId: string, message: string): Promise<void> {
+    await prisma.jobExecution.update({
+      where: { id: runId },
+      data: {
+        status: 'failed',
+        error: message,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  async getDiscoveryRunStatus(runId: string): Promise<DiscoveryRunStatusResponse> {
+    const run = await prisma.jobExecution.findFirst({
+      where: {
+        id: runId,
+        type: DISCOVERY_RUN_JOB_TYPE,
+      },
+    });
+
+    if (!run) {
+      throw new DiscoveryRunNotFoundError();
+    }
+
+    const progress = readRunProgress(run.result);
+    const status = mapJobStatusToPipelineStatus(run.status, progress.failedItems);
+
+    return {
+      runId: run.id,
+      runType: 'DISCOVERY',
+      status,
+      totalItems: progress.totalItems,
+      processedItems: progress.processedItems,
+      failedItems: progress.failedItems,
+      startedAt: run.startedAt?.toISOString() ?? null,
+      endedAt: run.finishedAt?.toISOString() ?? null,
+      errorMessage: run.error,
+      createdAt: run.createdAt.toISOString(),
+      updatedAt: run.updatedAt.toISOString(),
+    };
   }
 
   async listDiscoveryRecords(query: ListDiscoveryRecordsQuery): Promise<ListDiscoveryRecordsResponse> {

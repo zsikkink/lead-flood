@@ -5,6 +5,7 @@ import { createLogger } from '@lead-flood/observability';
 
 import { buildAuthenticateUser } from './auth/service.js';
 import { loadApiEnv } from './env.js';
+import type { DiscoveryRunJobPayload } from './modules/discovery/discovery.service.js';
 import { buildServer, LeadAlreadyExistsError } from './server.js';
 
 function toDayStart(value: string): Date {
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
 
   await boss.start();
   await boss.createQueue('lead.enrich.stub');
+  await boss.createQueue('discovery.run');
 
   const server = buildServer({
     env,
@@ -162,6 +164,14 @@ async function main(): Promise<void> {
 
         throw error;
       }
+    },
+    enqueueDiscoveryRun: async (payload: DiscoveryRunJobPayload) => {
+      await boss.send('discovery.run', payload, {
+        singletonKey: `discovery.run:${payload.runId}`,
+        retryLimit: 3,
+        retryDelay: 30,
+        retryBackoff: true,
+      });
     },
     getLeadById: async (leadId) => {
       return prisma.lead.findUnique({

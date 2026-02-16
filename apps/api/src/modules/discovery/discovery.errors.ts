@@ -4,3 +4,10 @@ export class DiscoveryNotImplementedError extends Error {
     this.name = 'DiscoveryNotImplementedError';
   }
 }
+
+export class DiscoveryRunNotFoundError extends Error {
+  constructor(message = 'Discovery run not found') {
+    super(message);
+    this.name = 'DiscoveryRunNotFoundError';
+  }
+}

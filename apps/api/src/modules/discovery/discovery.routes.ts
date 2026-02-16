@@ -9,9 +9,16 @@ import {
   ListDiscoveryRecordsResponseSchema,
 } from '@lead-flood/contracts';
 
-import { DiscoveryNotImplementedError } from './discovery.errors.js';
+import { DiscoveryNotImplementedError, DiscoveryRunNotFoundError } from './discovery.errors.js';
 import { PrismaDiscoveryRepository } from './discovery.repository.js';
-import { buildDiscoveryService } from './discovery.service.js';
+import {
+  buildDiscoveryService,
+  type DiscoveryRunJobPayload,
+} from './discovery.service.js';
+
+export interface DiscoveryRouteDependencies {
+  enqueueDiscoveryRun?: (payload: DiscoveryRunJobPayload) => Promise<void>;
+}
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
   reply.status(400);
@@ -22,6 +29,16 @@ function sendValidationError(reply: FastifyReply, requestId: string, message: st
 }
 
 function handleModuleError(error: unknown, request: FastifyRequest, reply: FastifyReply): boolean {
+  if (error instanceof DiscoveryRunNotFoundError) {
+    reply.status(404).send(
+      ErrorResponseSchema.parse({
+        error: error.message,
+        requestId: request.id,
+      }),
+    );
+    return true;
+  }
+
   if (error instanceof DiscoveryNotImplementedError) {
     reply.status(501).send(
       ErrorResponseSchema.parse({
@@ -35,9 +52,18 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
   return false;
 }
 
-export function registerDiscoveryRoutes(app: FastifyInstance): void {
+export function registerDiscoveryRoutes(
+  app: FastifyInstance,
+  dependencies?: DiscoveryRouteDependencies,
+): void {
   const repository = new PrismaDiscoveryRepository();
-  const service = buildDiscoveryService(repository);
+  const service = buildDiscoveryService(repository, {
+    enqueueDiscoveryRun: dependencies?.enqueueDiscoveryRun
+      ? dependencies.enqueueDiscoveryRun
+      : async () => {
+          throw new DiscoveryNotImplementedError('Discovery queue publisher is not configured');
+        },
+  });
 
   app.post('/v1/discovery/runs', async (request, reply) => {
     const parsed = CreateDiscoveryRunRequestSchema.safeParse(request.body);

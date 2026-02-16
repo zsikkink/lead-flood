@@ -23,6 +23,7 @@ import {
 
 import type { ApiEnv } from './env.js';
 import { registerDiscoveryRoutes } from './modules/discovery/discovery.routes.js';
+import type { DiscoveryRunJobPayload } from './modules/discovery/discovery.service.js';
 import { registerEnrichmentRoutes } from './modules/enrichment/enrichment.routes.js';
 import { registerIcpRoutes } from './modules/icp/icp.routes.js';
 import { registerScoringRoutes } from './modules/scoring/scoring.routes.js';
@@ -67,6 +68,7 @@ export interface BuildServerOptions {
   checkDatabaseHealth: () => Promise<boolean>;
   authenticateUser: (input: LoginRequest) => Promise<LoginResponse | null>;
   createLeadAndEnqueue: (input: CreateLeadRequest) => Promise<{ leadId: string; jobId: string }>;
+  enqueueDiscoveryRun?: (payload: DiscoveryRunJobPayload) => Promise<void>;
   getLeadById: (leadId: string) => Promise<LeadRecord | null>;
   listLeads: (query: ListLeadsQuery) => Promise<ListLeadsResponse>;
   getJobById: (jobId: string) => Promise<JobRecord | null>;
@@ -231,7 +233,13 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   });
 
   registerIcpRoutes(app);
-  registerDiscoveryRoutes(app);
+  if (options.enqueueDiscoveryRun) {
+    registerDiscoveryRoutes(app, {
+      enqueueDiscoveryRun: options.enqueueDiscoveryRun,
+    });
+  } else {
+    registerDiscoveryRoutes(app);
+  }
   registerEnrichmentRoutes(app);
   registerScoringRoutes(app);
 
