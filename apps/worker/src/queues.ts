@@ -144,8 +144,6 @@ export async function ensureWorkerQueues(boss: Pick<PgBoss, 'createQueue'>): Pro
   const deadLetterQueues = new Set<string>();
 
   for (const definition of WORKER_QUEUE_DEFINITIONS) {
-    await boss.createQueue(definition.name, toQueueOptions(definition));
-
     if (definition.retryOptions.deadLetter) {
       deadLetterQueues.add(definition.retryOptions.deadLetter);
     }
@@ -153,5 +151,9 @@ export async function ensureWorkerQueues(boss: Pick<PgBoss, 'createQueue'>): Pro
 
   for (const deadLetterQueueName of deadLetterQueues) {
     await boss.createQueue(deadLetterQueueName, { name: deadLetterQueueName });
+  }
+
+  for (const definition of WORKER_QUEUE_DEFINITIONS) {
+    await boss.createQueue(definition.name, toQueueOptions(definition));
   }
 }
