@@ -215,10 +215,10 @@ export class HunterAdapter {
       email,
       domain,
       companyName,
-      industry: null,
+      industry: normalizeString(data.industry),
       employeeCount: null,
-      country: null,
-      city: null,
+      country: normalizeString(data.country),
+      city: normalizeString(data.city),
       linkedinUrl: null,
       website: domain ? `https://${domain}` : null,
     };

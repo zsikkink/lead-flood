@@ -276,6 +276,14 @@ describe('pipeline domain persistence integration', () => {
     });
     expect(enrichmentRecord).not.toBeNull();
     expect(enrichmentRecord?.status).toBe('COMPLETED');
+    const normalizedEnrichment =
+      enrichmentRecord?.normalizedPayload && typeof enrichmentRecord.normalizedPayload === 'object'
+        ? (enrichmentRecord.normalizedPayload as Record<string, unknown>)
+        : null;
+    expect(normalizedEnrichment?.domain).toBe('acme.test');
+    expect(normalizedEnrichment?.companyName).toBe('Acme Retail');
+    expect(normalizedEnrichment?.industry).toBe('Retail');
+    expect(normalizedEnrichment?.country).toBe('AE');
 
     const featureRequest = featureSends.find((send) => send.queueName === 'features.compute');
     expect(featureRequest).toBeDefined();
