@@ -178,6 +178,37 @@ export class GoogleSearchRateLimitError extends Error {
   }
 }
 
+interface GoogleSearchRequestErrorContext {
+  statusCode: number | null;
+  responseBody: string | null;
+  url: string;
+}
+
+export class GoogleSearchRequestError extends Error {
+  readonly statusCode: number | null;
+  readonly responseBody: string | null;
+  readonly url: string;
+  override readonly cause: unknown;
+
+  constructor(message: string, context: GoogleSearchRequestErrorContext, cause?: unknown) {
+    super(message);
+    this.name = 'GoogleSearchRequestError';
+    this.statusCode = context.statusCode;
+    this.responseBody = context.responseBody;
+    this.url = context.url;
+    this.cause = cause;
+  }
+}
+
+async function readResponseBody(response: Response): Promise<string | null> {
+  try {
+    const body = await response.text();
+    return body.length > 0 ? body : null;
+  } catch {
+    return null;
+  }
+}
+
 export class GoogleSearchAdapter {
   private readonly apiKey: string | undefined;
   private readonly searchEngineId: string | undefined;
@@ -220,16 +251,31 @@ export class GoogleSearchAdapter {
       start: String(start),
       num: String(num),
     });
+    const requestUrl = `${this.baseUrl}?${params.toString()}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     let response: Response;
     try {
-      response = await this.fetchImpl(`${this.baseUrl}?${params.toString()}`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
+      try {
+        response = await this.fetchImpl(requestUrl, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+      } catch (error: unknown) {
+        throw new GoogleSearchRequestError(
+          `Google Custom Search fetch failed: ${
+            error instanceof Error ? error.message : 'unknown fetch failure'
+          }`,
+          {
+            statusCode: null,
+            responseBody: null,
+            url: requestUrl,
+          },
+          error,
+        );
+      }
     } finally {
       clearTimeout(timeout);
       this.nextAllowedRequestAt = Date.now() + this.minRequestIntervalMs;
@@ -243,8 +289,15 @@ export class GoogleSearchAdapter {
     }
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Google Custom Search failed: status=${response.status} body=${body}`);
+      const body = await readResponseBody(response);
+      throw new GoogleSearchRequestError(
+        `Google Custom Search failed: status=${response.status}`,
+        {
+          statusCode: response.status,
+          responseBody: body,
+          url: requestUrl,
+        },
+      );
     }
 
     const payload = (await response.json()) as GoogleSearchResponse;

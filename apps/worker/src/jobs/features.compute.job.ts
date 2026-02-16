@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { Prisma, prisma } from '@lead-flood/db';
+import { prisma } from '@lead-flood/db';
+import type { Prisma } from '@lead-flood/db';
 import type PgBoss from 'pg-boss';
 import type { Job, SendOptions } from 'pg-boss';
 

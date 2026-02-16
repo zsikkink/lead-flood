@@ -110,10 +110,8 @@ export class ClearbitAdapter {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     let response: Response;
-    let lookupTarget: 'person' | 'company';
     try {
       if (request.email) {
-        lookupTarget = 'person';
         const params = new URLSearchParams({ email: request.email });
         response = await this.fetchImpl(`${this.personBaseUrl}?${params.toString()}`, {
           method: 'GET',
@@ -123,7 +121,6 @@ export class ClearbitAdapter {
           signal: controller.signal,
         });
       } else {
-        lookupTarget = 'company';
         const params = new URLSearchParams();
         if (request.domain) {
           params.set('domain', request.domain);

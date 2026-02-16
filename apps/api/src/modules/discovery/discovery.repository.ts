@@ -1,4 +1,5 @@
-import { Prisma, prisma } from '@lead-flood/db';
+import { prisma } from '@lead-flood/db';
+import type { Prisma } from '@lead-flood/db';
 import type {
   CreateDiscoveryRunRequest,
   DiscoveryRunStatusResponse,

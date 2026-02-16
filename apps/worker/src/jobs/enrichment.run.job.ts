@@ -3,16 +3,16 @@ import type {
   EnrichmentProvider,
 } from '@lead-flood/contracts';
 import { Prisma, prisma } from '@lead-flood/db';
-import {
+import type {
   ClearbitAdapter,
   HunterAdapter,
-  type NormalizedEnrichmentPayload,
   PdlEnrichmentAdapter,
   PublicWebLookupAdapter,
-  type ClearbitEnrichmentRequest,
-  type HunterEnrichmentRequest,
-  type PdlEnrichmentRequest,
-  type PublicWebLookupEnrichmentRequest,
+  NormalizedEnrichmentPayload,
+  ClearbitEnrichmentRequest,
+  HunterEnrichmentRequest,
+  PdlEnrichmentRequest,
+  PublicWebLookupEnrichmentRequest,
 } from '@lead-flood/providers';
 import type PgBoss from 'pg-boss';
 import type { Job, SendOptions } from 'pg-boss';

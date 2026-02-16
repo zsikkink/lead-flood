@@ -6,17 +6,19 @@ import type {
 import { createHash } from 'node:crypto';
 import { Prisma, prisma } from '@lead-flood/db';
 import {
-  ApolloDiscoveryAdapter,
-  type ApolloDiscoveryRequest,
   ApolloRateLimitError,
-  CompanySearchAdapter,
-  type CompanySearchDiscoveryRequest,
-  GoogleSearchAdapter,
-  type GoogleSearchDiscoveryRequest,
   GoogleSearchRateLimitError,
-  LinkedInScrapeAdapter,
-  type LinkedInScrapeDiscoveryRequest,
   LinkedInScrapeRateLimitError,
+} from '@lead-flood/providers';
+import type {
+  ApolloDiscoveryAdapter,
+  ApolloDiscoveryRequest,
+  CompanySearchAdapter,
+  CompanySearchDiscoveryRequest,
+  GoogleSearchAdapter,
+  GoogleSearchDiscoveryRequest,
+  LinkedInScrapeAdapter,
+  LinkedInScrapeDiscoveryRequest,
 } from '@lead-flood/providers';
 import type PgBoss from 'pg-boss';
 import type { Job, SendOptions } from 'pg-boss';
@@ -146,6 +148,87 @@ function readRunProgress(result: unknown): DiscoveryRunProgress {
     totalItems: toCount(payload.totalItems),
     processedItems: toCount(payload.processedItems),
     failedItems: toCount(payload.failedItems),
+  };
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function serializeErrorForLog(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    const extendedError = error as Error & {
+      statusCode?: unknown;
+      responseBody?: unknown;
+      body?: unknown;
+      url?: unknown;
+      code?: unknown;
+      retryAfterSeconds?: unknown;
+      cause?: unknown;
+    };
+
+    const serialized: Record<string, unknown> = {
+      name: error.name,
+      message: error.message,
+      stack: nonEmptyString(error.stack),
+    };
+
+    if (typeof extendedError.statusCode === 'number' && Number.isFinite(extendedError.statusCode)) {
+      serialized.statusCode = extendedError.statusCode;
+    }
+
+    const url = nonEmptyString(extendedError.url);
+    if (url) {
+      serialized.url = url;
+    }
+
+    const responseBody =
+      nonEmptyString(extendedError.responseBody) ??
+      nonEmptyString(extendedError.body);
+    if (responseBody) {
+      serialized.responseBody = responseBody;
+    }
+
+    if (typeof extendedError.code === 'string') {
+      serialized.code = extendedError.code;
+    }
+
+    if (
+      typeof extendedError.retryAfterSeconds === 'number' &&
+      Number.isFinite(extendedError.retryAfterSeconds)
+    ) {
+      serialized.retryAfterSeconds = extendedError.retryAfterSeconds;
+    }
+
+    if (extendedError.cause instanceof Error) {
+      serialized.cause = {
+        name: extendedError.cause.name,
+        message: extendedError.cause.message,
+        stack: nonEmptyString(extendedError.cause.stack),
+      };
+    }
+
+    return serialized;
+  }
+
+  if (typeof error === 'string') {
+    return {
+      name: 'Error',
+      message: error,
+      stack: null,
+    };
+  }
+
+  return {
+    name: 'Error',
+    message: 'Unknown discovery.run failure',
+    stack: null,
+    errorType: typeof error,
   };
 }
 
@@ -1178,6 +1261,8 @@ export async function handleDiscoveryRunJob(
       'Completed discovery.run job',
     );
   } catch (error: unknown) {
+    const serializedError = serializeErrorForLog(error);
+
     if (
       error instanceof ApolloRateLimitError ||
       error instanceof GoogleSearchRateLimitError ||
@@ -1216,7 +1301,7 @@ export async function handleDiscoveryRunJob(
         queue: job.name,
         runId,
         correlationId: effectiveCorrelationId,
-        error,
+        error: serializedError,
       },
       'Failed discovery.run job',
     );
@@ -1224,7 +1309,9 @@ export async function handleDiscoveryRunJob(
     await markDiscoveryRunJobFailed(
       runId,
       job.data,
-      error instanceof Error ? error.message : 'Unknown discovery run failure',
+      typeof serializedError.message === 'string'
+        ? serializedError.message
+        : 'Unknown discovery run failure',
     );
 
     throw error;
