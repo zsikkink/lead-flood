@@ -1,25 +1,46 @@
 # LEAD-FLOOD Documentation
 
-## Start Here
+## Read In Order
+
+1. `README.md`
+2. `docs/SETUP_ONBOARDING.md`
+3. `docs/ENGINEERING_PLAN_BUILD_GUIDE.md`
+4. `docs/DEPLOYMENT.md`
+5. `docs/TROUBLESHOOTING.md`
+
+## What Each Document Covers
+
+- `README.md`
+  - Fast local startup
+  - Core scripts
+  - Common command set
+
+- `docs/SETUP_ONBOARDING.md`
+  - New contributor onboarding flow
+  - Environment file setup
+  - Local run/test troubleshooting
+
 - `docs/ENGINEERING_PLAN_BUILD_GUIDE.md`
-  - System purpose and current implemented scope
-  - Repository map (every top-level directory and file responsibilities)
-  - Runtime/data flow narratives (lead creation, outbox, worker lifecycle)
-  - Developer workflow and extension patterns
-  - Environment/operations model and CI/deploy behavior
-  - Verified command audit and onboarding Q&A
+  - Current architecture and module boundaries
+  - Implemented API and worker pipeline behavior
+  - Data model and extension points
 
-## Quick Orientation
-- Project root quick start: `README.md`
-- API bootstrap entry: `apps/api/src/index.ts`
-- Worker bootstrap entry: `apps/worker/src/index.ts`
-- Web entry page: `apps/web/app/page.tsx`
-- Contracts source of truth: `packages/contracts/src`
-- Database schema/migrations: `packages/db/prisma`
-- CI pipeline: `.github/workflows/ci.yml`
+- `docs/DEPLOYMENT.md`
+  - CI checks
+  - Image build/publish flow
+  - Staging/production deployment triggers
+
+- `docs/TROUBLESHOOTING.md`
+  - Setup/runtime/test failure handling
+  - Known warnings/deprecations
+  - Current limitations and mitigation notes
+
+## Core Paths
+
+- API entrypoint: `apps/api/src/index.ts`
+- API server routes: `apps/api/src/server.ts`
+- Worker entrypoint: `apps/worker/src/index.ts`
+- Contracts: `packages/contracts/src`
+- Prisma schema: `packages/db/prisma/schema.prisma`
+- CI workflow: `.github/workflows/ci.yml`
 - Deploy workflow: `.github/workflows/deploy.yml`
-
-## Learning Utilities
-- Backfill feature snapshots:
-  - `pnpm learning:backfill-features -- --icpProfileId <icp_id> --batchSize 200`
-  - Dry run: `pnpm learning:backfill-features -- --dry-run`

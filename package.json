@@ -19,12 +19,13 @@
     "db:migrate": "pnpm --filter @lead-flood/db prisma:migrate",
     "db:migrate:dev": "pnpm --filter @lead-flood/db prisma:migrate:dev",
     "db:seed": "pnpm --filter @lead-flood/db prisma:seed",
-    "icp:seed": "pnpm --filter @lead-flood/worker exec tsx ../../scripts/icp/seed-zbooni-icps.ts",
+    "icp:seed": "pnpm --filter @lead-flood/db build && pnpm --filter @lead-flood/worker exec tsx ../../scripts/icp/seed-zbooni-icps.ts",
     "db:studio": "pnpm --filter @lead-flood/db prisma:studio",
-    "learning:backfill-features": "pnpm --filter @lead-flood/worker exec tsx ../../scripts/learning/backfill-features.ts",
+    "learning:backfill-features": "pnpm --filter @lead-flood/db build && pnpm --filter @lead-flood/worker exec tsx ../../scripts/learning/backfill-features.ts",
     "dev:infra": "docker compose -f infra/docker/docker-compose.local.yml up -d",
     "dev:infra:down": "docker compose -f infra/docker/docker-compose.local.yml down",
-    "bootstrap": "pnpm install && pnpm dev:infra && pnpm db:migrate && pnpm db:seed",
+    "bootstrap": "bash scripts/bootstrap.sh",
+    "doctor": "bash scripts/preflight.sh --with-docker",
     "contracts:check": "pnpm --filter @lead-flood/contracts build"
   },
   "devDependencies": {

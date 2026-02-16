@@ -10,6 +10,9 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**"]
     },
+    "@lead-flood/config#build": {
+      "outputs": []
+    },
     "lint": {
       "dependsOn": ["^lint"],
       "outputs": []
@@ -20,19 +23,19 @@
     },
     "test": {
       "dependsOn": ["^build", "^test"],
-      "outputs": ["coverage/**"]
+      "outputs": []
     },
     "test:unit": {
       "dependsOn": ["^build", "^test:unit"],
-      "outputs": ["coverage/**"]
+      "outputs": []
     },
     "test:integration": {
       "dependsOn": ["^build", "^test:integration"],
-      "outputs": ["coverage/**"]
+      "outputs": []
     },
     "test:e2e": {
       "dependsOn": ["^build", "^test:e2e"],
-      "outputs": ["playwright-report/**"]
+      "outputs": []
     }
   }
 }

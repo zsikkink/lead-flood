@@ -764,16 +764,6 @@ async function executeDiscoveryProvider(
       }
 
       const googleRequest = toGoogleSearchRequest(payload, limit, correlationId);
-      logger.info(
-        {
-          jobId,
-          runId: payload.runId,
-          correlationId,
-          provider,
-          query: googleRequest.query,
-        },
-        'Google discovery query',
-      );
       const result = await dependencies.googleSearchAdapter.discoverLeads(
         googleRequest,
       );
