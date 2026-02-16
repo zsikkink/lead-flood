@@ -6,6 +6,7 @@ import { Prisma, prisma } from '@lead-flood/db';
 import {
   ClearbitAdapter,
   HunterAdapter,
+  type NormalizedEnrichmentPayload,
   PdlEnrichmentAdapter,
   PublicWebLookupAdapter,
   type ClearbitEnrichmentRequest,
@@ -85,25 +86,11 @@ function deriveProviderRecordId(
   }
 
   const normalized = result.normalized;
-  const fromPayload = normalized.email ?? normalized.companyDomain;
+  const fromPayload = normalized.email ?? normalized.domain;
   return fromPayload ?? fallbackEmail;
 }
 
-interface UnifiedEnrichmentLead {
-  provider: string;
-  fullName: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-  title: string | null;
-  linkedinUrl: string | null;
-  companyName: string | null;
-  companyDomain: string | null;
-  companySize: number | null;
-  industry: string | null;
-  locationCountry: string | null;
-  raw: unknown;
-}
+type UnifiedEnrichmentLead = NormalizedEnrichmentPayload;
 
 interface UnifiedFailure {
   statusCode: number | null;

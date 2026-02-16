@@ -35,8 +35,9 @@ describe('ClearbitAdapter integration', () => {
     if (result.status !== 'success') {
       throw new Error('Expected success result');
     }
-    expect(result.normalized.provider).toBe('clearbit');
-    expect(result.normalized.companyDomain).toBe('acme.com');
+    expect(result.normalized.domain).toBe('acme.com');
+    expect(result.normalized.companyName).toBe('Acme');
+    expect(result.normalized.country).toBe('AE');
   });
 
   it('returns terminal_error when API key is missing', async () => {

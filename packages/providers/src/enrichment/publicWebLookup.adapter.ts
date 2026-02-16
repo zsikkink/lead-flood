@@ -1,24 +1,10 @@
+import type { NormalizedEnrichmentPayload } from './normalized.types.js';
+
 export interface PublicWebLookupEnrichmentRequest {
   email?: string;
   domain?: string;
   companyName?: string;
   correlationId?: string;
-}
-
-export interface PublicWebLookupEnrichedLead {
-  provider: 'other_free';
-  fullName: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-  title: string | null;
-  linkedinUrl: string | null;
-  companyName: string | null;
-  companyDomain: string | null;
-  companySize: number | null;
-  industry: string | null;
-  locationCountry: string | null;
-  raw: unknown;
 }
 
 export interface PublicWebLookupFailure {
@@ -31,7 +17,7 @@ export interface PublicWebLookupFailure {
 export type PublicWebLookupEnrichmentResult =
   | {
       status: 'success';
-      normalized: PublicWebLookupEnrichedLead;
+      normalized: NormalizedEnrichmentPayload;
       raw: unknown;
     }
   | {
@@ -178,28 +164,26 @@ export class PublicWebLookupAdapter {
     raw: unknown,
     request: PublicWebLookupEnrichmentRequest,
     derivedDomain: string | null,
-  ): PublicWebLookupEnrichedLead {
+  ): NormalizedEnrichmentPayload {
     const list = Array.isArray(raw) ? raw : [];
     const first = list[0] && typeof list[0] === 'object' ? (list[0] as Record<string, unknown>) : {};
 
     const companyName = normalizeString(first.name) ?? normalizeString(request.companyName);
-    const companyDomain = normalizeString(first.domain) ?? derivedDomain;
-    const email = normalizeString(request.email) ?? (companyDomain ? `info@${companyDomain}` : null);
+    const domain = normalizeString(first.domain) ?? derivedDomain;
+    const email = normalizeString(request.email) ?? (domain ? `info@${domain}` : null);
 
     return {
-      provider: 'other_free',
-      fullName: null,
-      firstName: null,
-      lastName: null,
       email,
-      title: null,
-      linkedinUrl: null,
+      domain,
       companyName,
-      companyDomain,
-      companySize: null,
       industry: null,
-      locationCountry: null,
-      raw,
+      employeeCount: null,
+      country: null,
+      city: null,
+      linkedinUrl: null,
+      website:
+        normalizeString(first.site?.toString()) ??
+        (domain ? `https://${domain}` : null),
     };
   }
 }

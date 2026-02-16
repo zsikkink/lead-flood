@@ -49,9 +49,11 @@ describe('PdlEnrichmentAdapter integration', () => {
       throw new Error('Expected success result');
     }
 
-    expect(result.normalized.provider).toBe('people_data_labs');
     expect(result.normalized.email).toBe('jane@acme.com');
-    expect(result.normalized.companyDomain).toBe('acme.com');
+    expect(result.normalized.domain).toBe('acme.com');
+    expect(result.normalized.companyName).toBe('Acme');
+    expect(result.normalized.employeeCount).toBe(200);
+    expect(result.normalized.country).toBe('AE');
   });
 
   it('classifies 500 responses as retryable', async () => {

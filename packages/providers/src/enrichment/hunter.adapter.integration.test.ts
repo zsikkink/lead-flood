@@ -32,8 +32,10 @@ describe('HunterAdapter integration', () => {
     if (result.status !== 'success') {
       throw new Error('Expected success result');
     }
-    expect(result.normalized.provider).toBe('hunter');
     expect(result.normalized.email).toBe('sara@acme.com');
+    expect(result.normalized.domain).toBe('acme.com');
+    expect(result.normalized.companyName).toBe('Acme');
+    expect(result.normalized.linkedinUrl).toBeNull();
   });
 
   it('returns terminal_error when API key is missing', async () => {

@@ -1,24 +1,10 @@
+import type { NormalizedEnrichmentPayload } from './normalized.types.js';
+
 export interface PdlEnrichmentRequest {
   email?: string;
   domain?: string;
   companyName?: string;
   correlationId?: string;
-}
-
-export interface NormalizedEnrichedLead {
-  provider: 'people_data_labs';
-  fullName: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-  title: string | null;
-  linkedinUrl: string | null;
-  companyName: string | null;
-  companyDomain: string | null;
-  companySize: number | null;
-  industry: string | null;
-  locationCountry: string | null;
-  raw: unknown;
 }
 
 export interface PdlFailure {
@@ -31,7 +17,7 @@ export interface PdlFailure {
 export type PdlEnrichmentResult =
   | {
       status: 'success';
-      normalized: NormalizedEnrichedLead;
+      normalized: NormalizedEnrichmentPayload;
       raw: unknown;
     }
   | {
@@ -186,7 +172,7 @@ export class PdlEnrichmentAdapter {
     }
   }
 
-  private normalizePerson(raw: unknown): NormalizedEnrichedLead {
+  private normalizePerson(raw: unknown): NormalizedEnrichmentPayload {
     const value = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
     const experience =
       Array.isArray(value.experience) && value.experience.length > 0
@@ -195,20 +181,21 @@ export class PdlEnrichmentAdapter {
     const primaryExperience =
       experience && typeof experience === 'object' ? (experience as Record<string, unknown>) : null;
 
+    const domain = normalizeString(primaryExperience?.company_domain);
+
     return {
-      provider: 'people_data_labs',
-      fullName: normalizeString(value.full_name),
-      firstName: normalizeString(value.first_name),
-      lastName: normalizeString(value.last_name),
       email: normalizeString(value.work_email) ?? normalizeString(value.personal_email),
-      title: normalizeString(value.job_title),
-      linkedinUrl: normalizeString(value.linkedin_url),
+      domain,
       companyName: normalizeString(primaryExperience?.company),
-      companyDomain: normalizeString(primaryExperience?.company_domain),
-      companySize: normalizeNumber(primaryExperience?.company_size),
       industry: normalizeString(primaryExperience?.industry),
-      locationCountry: normalizeString(value.location_country),
-      raw,
+      employeeCount: normalizeNumber(primaryExperience?.company_size),
+      country: normalizeString(value.location_country),
+      city: normalizeString(value.location_locality),
+      linkedinUrl: normalizeString(value.linkedin_url),
+      website:
+        normalizeString(primaryExperience?.company_website) ??
+        normalizeString(value.website) ??
+        (domain ? `https://${domain}` : null),
     };
   }
 

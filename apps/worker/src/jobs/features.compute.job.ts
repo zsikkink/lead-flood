@@ -286,10 +286,14 @@ export async function handleFeaturesComputeJob(
         ? (latestEnrichment.normalizedPayload as Record<string, unknown>)
         : null;
 
-    const companyName = normalizeString(normalizedPayload?.companyName);
+    const companyName =
+      normalizeString(normalizedPayload?.companyName) ??
+      normalizeString(normalizedPayload?.company_name);
     const industry = normalizeString(normalizedPayload?.industry);
-    const geoCountry = normalizeString(normalizedPayload?.locationCountry);
-    const companySizeRaw = normalizedPayload?.companySize;
+    const geoCountry =
+      normalizeString(normalizedPayload?.country) ??
+      normalizeString(normalizedPayload?.locationCountry);
+    const companySizeRaw = normalizedPayload?.employeeCount ?? normalizedPayload?.companySize;
     const companySize =
       typeof companySizeRaw === 'number' && Number.isFinite(companySizeRaw)
         ? companySizeRaw

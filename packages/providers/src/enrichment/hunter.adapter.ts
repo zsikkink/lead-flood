@@ -1,24 +1,10 @@
+import type { NormalizedEnrichmentPayload } from './normalized.types.js';
+
 export interface HunterEnrichmentRequest {
   email?: string;
   domain?: string;
   companyName?: string;
   correlationId?: string;
-}
-
-export interface HunterEnrichedLead {
-  provider: 'hunter';
-  fullName: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-  title: string | null;
-  linkedinUrl: string | null;
-  companyName: string | null;
-  companyDomain: string | null;
-  companySize: number | null;
-  industry: string | null;
-  locationCountry: string | null;
-  raw: unknown;
 }
 
 export interface HunterFailure {
@@ -31,7 +17,7 @@ export interface HunterFailure {
 export type HunterEnrichmentResult =
   | {
       status: 'success';
-      normalized: HunterEnrichedLead;
+      normalized: NormalizedEnrichmentPayload;
       raw: unknown;
     }
   | {
@@ -111,8 +97,8 @@ export class HunterAdapter {
       };
     }
 
-    const domain = request.domain ?? domainFromEmail(request.email) ?? null;
-    if (!request.email && !domain) {
+    const derivedDomain = request.domain ?? domainFromEmail(request.email) ?? null;
+    if (!request.email && !derivedDomain) {
       return {
         status: 'terminal_error',
         failure: {
@@ -146,7 +132,7 @@ export class HunterAdapter {
         lookupMode = 'domain_search';
         const params = new URLSearchParams({
           api_key: this.apiKey,
-          domain: domain ?? '',
+          domain: derivedDomain ?? '',
           limit: '1',
         });
         response = await this.fetchImpl(`${this.baseUrl}/domain-search?${params.toString()}`, {
@@ -186,10 +172,9 @@ export class HunterAdapter {
         : { status: 'terminal_error', failure };
     }
 
-    const normalized = this.normalize(raw, lookupMode, request, domain);
     return {
       status: 'success',
-      normalized,
+      normalized: this.normalize(raw, request, lookupMode, derivedDomain),
       raw,
     };
   }
@@ -208,10 +193,10 @@ export class HunterAdapter {
 
   private normalize(
     raw: unknown,
-    lookupMode: 'email_verifier' | 'domain_search',
     request: HunterEnrichmentRequest,
-    domain: string | null,
-  ): HunterEnrichedLead {
+    lookupMode: 'email_verifier' | 'domain_search',
+    derivedDomain: string | null,
+  ): NormalizedEnrichmentPayload {
     const value = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
     const data = value.data && typeof value.data === 'object' ? (value.data as Record<string, unknown>) : {};
     const firstDomainEmail =
@@ -219,39 +204,23 @@ export class HunterAdapter {
         ? (data.emails[0] as Record<string, unknown>)
         : null;
 
-    const firstName =
-      normalizeString(data.first_name) ??
-      normalizeString(firstDomainEmail?.first_name);
-    const lastName =
-      normalizeString(data.last_name) ??
-      normalizeString(firstDomainEmail?.last_name);
-
-    const fullName =
-      normalizeString(data.full_name) ??
-      ([firstName, lastName].filter(Boolean).join(' ').trim() || null);
-
     const email =
       normalizeString(data.email) ??
       normalizeString(firstDomainEmail?.value) ??
       normalizeString(request.email);
+    const domain = derivedDomain ?? domainFromEmail(email ?? undefined);
+    const companyName = normalizeString(data.organization) ?? normalizeString(request.companyName);
 
     return {
-      provider: 'hunter',
-      fullName,
-      firstName,
-      lastName,
       email,
-      title: normalizeString(firstDomainEmail?.position),
-      linkedinUrl: null,
-      companyName: normalizeString(data.organization) ?? normalizeString(request.companyName),
-      companyDomain: domain,
-      companySize: null,
+      domain,
+      companyName,
       industry: null,
-      locationCountry: null,
-      raw: {
-        mode: lookupMode,
-        payload: raw,
-      },
+      employeeCount: null,
+      country: null,
+      city: null,
+      linkedinUrl: null,
+      website: domain ? `https://${domain}` : null,
     };
   }
 

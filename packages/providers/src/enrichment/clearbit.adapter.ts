@@ -1,24 +1,10 @@
+import type { NormalizedEnrichmentPayload } from './normalized.types.js';
+
 export interface ClearbitEnrichmentRequest {
   email?: string;
   domain?: string;
   companyName?: string;
   correlationId?: string;
-}
-
-export interface ClearbitEnrichedLead {
-  provider: 'clearbit';
-  fullName: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-  title: string | null;
-  linkedinUrl: string | null;
-  companyName: string | null;
-  companyDomain: string | null;
-  companySize: number | null;
-  industry: string | null;
-  locationCountry: string | null;
-  raw: unknown;
 }
 
 export interface ClearbitFailure {
@@ -31,7 +17,7 @@ export interface ClearbitFailure {
 export type ClearbitEnrichmentResult =
   | {
       status: 'success';
-      normalized: ClearbitEnrichedLead;
+      normalized: NormalizedEnrichmentPayload;
       raw: unknown;
     }
   | {
@@ -185,7 +171,7 @@ export class ClearbitAdapter {
         : { status: 'terminal_error', failure };
     }
 
-    const normalized = this.normalize(raw, lookupTarget, request);
+    const normalized = this.normalize(raw, request);
     return {
       status: 'success',
       normalized,
@@ -207,34 +193,29 @@ export class ClearbitAdapter {
 
   private normalize(
     raw: unknown,
-    lookupTarget: 'person' | 'company',
     request: ClearbitEnrichmentRequest,
-  ): ClearbitEnrichedLead {
+  ): NormalizedEnrichmentPayload {
     const value = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
     const company =
       value.company && typeof value.company === 'object' ? (value.company as Record<string, unknown>) : null;
     const geo = value.geo && typeof value.geo === 'object' ? (value.geo as Record<string, unknown>) : null;
+    const domain =
+      normalizeString(company?.domain) ??
+      normalizeString(request.domain) ??
+      domainFromEmail(request.email);
 
     return {
-      provider: 'clearbit',
-      fullName: normalizeString(value.name?.toString()),
-      firstName: normalizeString(value.name?.toString()?.split(' ')[0]),
-      lastName: null,
       email: normalizeString(value.email) ?? normalizeString(request.email),
-      title: normalizeString(value.title),
-      linkedinUrl: normalizeString(value.linkedin?.toString()),
+      domain,
       companyName: normalizeString(company?.name) ?? normalizeString(value.name),
-      companyDomain:
-        normalizeString(company?.domain) ??
-        normalizeString(request.domain) ??
-        domainFromEmail(request.email),
-      companySize: normalizeNumber(company?.metrics && (company.metrics as Record<string, unknown>).employees),
       industry: normalizeString(company?.category && (company.category as Record<string, unknown>).industry),
-      locationCountry: normalizeString(geo?.country),
-      raw: {
-        target: lookupTarget,
-        payload: raw,
-      },
+      employeeCount: normalizeNumber(company?.metrics && (company.metrics as Record<string, unknown>).employees),
+      country: normalizeString(geo?.country),
+      city: normalizeString(geo?.city),
+      linkedinUrl: normalizeString(value.linkedin?.toString()),
+      website:
+        normalizeString(company?.site?.toString()) ??
+        (domain ? `https://${domain}` : null),
     };
   }
 }

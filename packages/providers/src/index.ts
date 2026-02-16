@@ -4,5 +4,6 @@ export * from './discovery/googleSearch.adapter.js';
 export * from './discovery/linkedInScrape.adapter.js';
 export * from './enrichment/clearbit.adapter.js';
 export * from './enrichment/hunter.adapter.js';
+export * from './enrichment/normalized.types.js';
 export * from './enrichment/pdl.adapter.js';
 export * from './enrichment/publicWebLookup.adapter.js';

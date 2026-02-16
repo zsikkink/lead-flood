@@ -29,8 +29,9 @@ describe('PublicWebLookupAdapter integration', () => {
     if (result.status !== 'success') {
       throw new Error('Expected success result');
     }
-    expect(result.normalized.provider).toBe('other_free');
-    expect(result.normalized.companyDomain).toBe('acme.com');
+    expect(result.normalized.domain).toBe('acme.com');
+    expect(result.normalized.companyName).toBe('Acme');
+    expect(result.normalized.website).toBe('https://acme.com');
   });
 
   it('returns terminal_error when disabled', async () => {
