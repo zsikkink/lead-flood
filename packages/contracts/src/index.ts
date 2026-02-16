@@ -6,3 +6,6 @@ export * from './icp.contract.js';
 export * from './discovery.contract.js';
 export * from './enrichment.contract.js';
 export * from './scoring.contract.js';
+export * from './learning.contract.js';
+export * from './messaging.contract.js';
+export * from './analytics.contract.js';
