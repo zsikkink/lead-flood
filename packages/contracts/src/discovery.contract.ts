@@ -69,8 +69,18 @@ export const ListDiscoveryRecordsQuerySchema = z
     status: DiscoveryRecordStatusSchema.optional(),
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
+    includeQualityMetrics: z.coerce.boolean().default(false),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const DiscoveryQualityMetricsSchema = z
+  .object({
+    validEmailCount: z.number().int().min(0),
+    validDomainCount: z.number().int().min(0),
+    industryMatchRate: z.number().min(0).max(1),
+    geoMatchRate: z.number().min(0).max(1),
   })
   .strict();
 
@@ -94,6 +104,7 @@ export const LeadDiscoveryRecordResponseSchema = z
 export const ListDiscoveryRecordsResponseSchema = z
   .object({
     items: z.array(LeadDiscoveryRecordResponseSchema),
+    qualityMetrics: DiscoveryQualityMetricsSchema.nullable().optional(),
     page: z.number().int().min(1),
     pageSize: z.number().int().min(1),
     total: z.number().int().min(0),
@@ -112,6 +123,7 @@ export type ListDiscoveryRecordsQuery = z.infer<typeof ListDiscoveryRecordsQuery
 export type LeadDiscoveryRecordResponse = z.infer<
   typeof LeadDiscoveryRecordResponseSchema
 >;
+export type DiscoveryQualityMetrics = z.infer<typeof DiscoveryQualityMetricsSchema>;
 export type ListDiscoveryRecordsResponse = z.infer<
   typeof ListDiscoveryRecordsResponseSchema
 >;

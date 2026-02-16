@@ -66,8 +66,18 @@ export const ListEnrichmentRecordsQuerySchema = z
     status: EnrichmentStatusSchema.optional(),
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
+    includeQualityMetrics: z.coerce.boolean().default(false),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const EnrichmentQualityMetricsSchema = z
+  .object({
+    validEmailCount: z.number().int().min(0),
+    validDomainCount: z.number().int().min(0),
+    industryMatchRate: z.number().min(0).max(1),
+    geoMatchRate: z.number().min(0).max(1),
   })
   .strict();
 
@@ -92,6 +102,7 @@ export const LeadEnrichmentRecordResponseSchema = z
 export const ListEnrichmentRecordsResponseSchema = z
   .object({
     items: z.array(LeadEnrichmentRecordResponseSchema),
+    qualityMetrics: EnrichmentQualityMetricsSchema.nullable().optional(),
     page: z.number().int().min(1),
     pageSize: z.number().int().min(1),
     total: z.number().int().min(0),
@@ -109,6 +120,7 @@ export type ListEnrichmentRecordsQuery = z.infer<typeof ListEnrichmentRecordsQue
 export type LeadEnrichmentRecordResponse = z.infer<
   typeof LeadEnrichmentRecordResponseSchema
 >;
+export type EnrichmentQualityMetrics = z.infer<typeof EnrichmentQualityMetricsSchema>;
 export type ListEnrichmentRecordsResponse = z.infer<
   typeof ListEnrichmentRecordsResponseSchema
 >;

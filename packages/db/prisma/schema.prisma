@@ -211,6 +211,7 @@ model IcpProfile {
   discoveryRecords     LeadDiscoveryRecord[]
   featureSnapshots     LeadFeatureSnapshot[]
   scorePredictions     LeadScorePrediction[]
+  analyticsDailyRollups AnalyticsDailyRollup[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
@@ -406,4 +407,24 @@ model LeadScorePrediction {
   @@index([leadId, predictedAt])
   @@index([icpProfileId, predictedAt])
   @@index([modelVersionId, predictedAt])
+}
+
+model AnalyticsDailyRollup {
+  id                String      @id @default(cuid())
+  day               DateTime
+  icpProfileId      String
+  icpProfile        IcpProfile  @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
+  discoveredCount   Int         @default(0)
+  enrichedCount     Int         @default(0)
+  scoredCount       Int         @default(0)
+  validEmailCount   Int         @default(0)
+  validDomainCount  Int         @default(0)
+  industryMatchRate Float       @default(0)
+  geoMatchRate      Float       @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([day, icpProfileId])
+  @@index([day])
+  @@index([icpProfileId, day])
 }

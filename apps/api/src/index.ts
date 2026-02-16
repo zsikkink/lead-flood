@@ -7,6 +7,11 @@ import { buildAuthenticateUser } from './auth/service.js';
 import { loadApiEnv } from './env.js';
 import { buildServer, LeadAlreadyExistsError } from './server.js';
 
+function toDayStart(value: string): Date {
+  const source = new Date(value);
+  return new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth(), source.getUTCDate()));
+}
+
 async function main(): Promise<void> {
   const env = loadApiEnv(process.env);
   const logger = createLogger({
@@ -221,6 +226,56 @@ async function main(): Promise<void> {
         }),
       ]);
 
+      const qualityRows = query.includeQualityMetrics
+        ? await prisma.analyticsDailyRollup.findMany({
+            where: {
+              ...(query.icpProfileId ? { icpProfileId: query.icpProfileId } : {}),
+              ...(query.from || query.to
+                ? {
+                    day: {
+                      ...(query.from ? { gte: toDayStart(query.from) } : {}),
+                      ...(query.to ? { lte: toDayStart(query.to) } : {}),
+                    },
+                  }
+                : {}),
+            },
+            select: {
+              discoveredCount: true,
+              validEmailCount: true,
+              validDomainCount: true,
+              industryMatchRate: true,
+              geoMatchRate: true,
+            },
+          })
+        : [];
+      const qualityDenominator = qualityRows.reduce((sum, row) => sum + row.discoveredCount, 0);
+      const qualityMetrics = query.includeQualityMetrics
+        ? {
+            validEmailCount: qualityRows.reduce((sum, row) => sum + row.validEmailCount, 0),
+            validDomainCount: qualityRows.reduce((sum, row) => sum + row.validDomainCount, 0),
+            industryMatchRate:
+              qualityDenominator > 0
+                ? Number(
+                    (
+                      qualityRows.reduce(
+                        (sum, row) => sum + row.industryMatchRate * row.discoveredCount,
+                        0,
+                      ) / qualityDenominator
+                    ).toFixed(6),
+                  )
+                : 0,
+            geoMatchRate:
+              qualityDenominator > 0
+                ? Number(
+                    (
+                      qualityRows.reduce((sum, row) => sum + row.geoMatchRate * row.discoveredCount, 0) /
+                      qualityDenominator
+                    ).toFixed(6),
+                  )
+                : 0,
+          }
+        : undefined;
+
       return {
         items: rows.map((lead) => ({
           id: lead.id,
@@ -239,6 +294,7 @@ async function main(): Promise<void> {
           latestEnrichmentNormalizedPayload: lead.enrichmentRecords[0]?.normalizedPayload ?? null,
           latestEnrichmentRawPayload: lead.enrichmentRecords[0]?.rawPayload ?? null,
         })),
+        qualityMetrics,
         page: query.page,
         pageSize: query.pageSize,
         total,

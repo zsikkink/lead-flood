@@ -9,6 +9,11 @@ import { prisma } from '@lead-flood/db';
 
 import { DiscoveryNotImplementedError } from './discovery.errors.js';
 
+function toDayStart(value: string): Date {
+  const source = new Date(value);
+  return new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth(), source.getUTCDate()));
+}
+
 export interface DiscoveryRepository {
   createDiscoveryRun(input: CreateDiscoveryRunRequest): Promise<CreateDiscoveryRunResponse>;
   getDiscoveryRunStatus(runId: string): Promise<DiscoveryRunStatusResponse>;
@@ -54,7 +59,7 @@ export class PrismaDiscoveryRepository implements DiscoveryRepository {
         : {}),
     };
 
-    const [total, rows] = await Promise.all([
+    const [total, rows, qualityRows] = await Promise.all([
       prisma.leadDiscoveryRecord.count({ where }),
       prisma.leadDiscoveryRecord.findMany({
         where,
@@ -62,7 +67,57 @@ export class PrismaDiscoveryRepository implements DiscoveryRepository {
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
       }),
+      query.includeQualityMetrics
+        ? prisma.analyticsDailyRollup.findMany({
+            where: {
+              ...(query.icpProfileId ? { icpProfileId: query.icpProfileId } : {}),
+              ...(query.from || query.to
+                ? {
+                    day: {
+                      ...(query.from ? { gte: toDayStart(query.from) } : {}),
+                      ...(query.to ? { lte: toDayStart(query.to) } : {}),
+                    },
+                  }
+                : {}),
+            },
+            select: {
+              discoveredCount: true,
+              validEmailCount: true,
+              validDomainCount: true,
+              industryMatchRate: true,
+              geoMatchRate: true,
+            },
+          })
+        : Promise.resolve([]),
     ]);
+
+    const qualityDenominator = qualityRows.reduce((sum, row) => sum + row.discoveredCount, 0);
+    const qualityMetrics = query.includeQualityMetrics
+      ? {
+          validEmailCount: qualityRows.reduce((sum, row) => sum + row.validEmailCount, 0),
+          validDomainCount: qualityRows.reduce((sum, row) => sum + row.validDomainCount, 0),
+          industryMatchRate:
+            qualityDenominator > 0
+              ? Number(
+                  (
+                    qualityRows.reduce(
+                      (sum, row) => sum + row.industryMatchRate * row.discoveredCount,
+                      0,
+                    ) / qualityDenominator
+                  ).toFixed(6),
+                )
+              : 0,
+          geoMatchRate:
+            qualityDenominator > 0
+              ? Number(
+                  (
+                    qualityRows.reduce((sum, row) => sum + row.geoMatchRate * row.discoveredCount, 0) /
+                    qualityDenominator
+                  ).toFixed(6),
+                )
+              : 0,
+        }
+      : undefined;
 
     return {
       items: rows.map((row) => ({
@@ -79,6 +134,7 @@ export class PrismaDiscoveryRepository implements DiscoveryRepository {
         discoveredAt: row.discoveredAt.toISOString(),
         createdAt: row.createdAt.toISOString(),
       })),
+      qualityMetrics,
       page: query.page,
       pageSize: query.pageSize,
       total,

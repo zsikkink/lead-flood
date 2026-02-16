@@ -50,8 +50,18 @@ export const ListLeadsQuerySchema = z
     scoreBand: LeadScoreBandSchema.optional(),
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
+    includeQualityMetrics: z.coerce.boolean().default(false),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const LeadInspectionQualityMetricsSchema = z
+  .object({
+    validEmailCount: z.number().int().min(0),
+    validDomainCount: z.number().int().min(0),
+    industryMatchRate: z.number().min(0).max(1),
+    geoMatchRate: z.number().min(0).max(1),
   })
   .strict();
 
@@ -78,6 +88,7 @@ export const LeadInspectionResponseSchema = z
 export const ListLeadsResponseSchema = z
   .object({
     items: z.array(LeadInspectionResponseSchema),
+    qualityMetrics: LeadInspectionQualityMetricsSchema.nullable().optional(),
     page: z.number().int().min(1),
     pageSize: z.number().int().min(1),
     total: z.number().int().min(0),
@@ -93,4 +104,5 @@ export type GetJobStatusResponse = z.infer<typeof GetJobStatusResponseSchema>;
 export type LeadScoreBand = z.infer<typeof LeadScoreBandSchema>;
 export type ListLeadsQuery = z.infer<typeof ListLeadsQuerySchema>;
 export type LeadInspectionResponse = z.infer<typeof LeadInspectionResponseSchema>;
+export type LeadInspectionQualityMetrics = z.infer<typeof LeadInspectionQualityMetricsSchema>;
 export type ListLeadsResponse = z.infer<typeof ListLeadsResponseSchema>;
