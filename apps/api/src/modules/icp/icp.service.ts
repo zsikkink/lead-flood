@@ -7,7 +7,9 @@ import type {
   IcpStatusResponse,
   ListIcpProfilesQuery,
   ListIcpProfilesResponse,
+  ListIcpRulesResponse,
   QualificationRuleResponse,
+  ReplaceIcpRulesRequest,
   UpdateIcpProfileRequest,
   UpdateQualificationRuleRequest,
 } from '@lead-flood/contracts';
@@ -30,6 +32,8 @@ export interface IcpService {
     input: UpdateQualificationRuleRequest,
   ): Promise<QualificationRuleResponse>;
   deleteQualificationRule(icpId: string, ruleId: string): Promise<void>;
+  listIcpRules(icpId: string): Promise<ListIcpRulesResponse>;
+  replaceIcpRules(icpId: string, input: ReplaceIcpRulesRequest): Promise<ListIcpRulesResponse>;
   getIcpStatus(icpId: string): Promise<IcpStatusResponse>;
   getIcpDebugSample(icpProfileId: string, query: IcpDebugSampleQuery): Promise<IcpDebugSampleResponse>;
 }
@@ -67,6 +71,12 @@ export function buildIcpService(repository: IcpRepository): IcpService {
     async deleteQualificationRule(icpId, ruleId) {
       // TODO: enforce minimum required rules.
       await repository.deleteQualificationRule(icpId, ruleId);
+    },
+    async listIcpRules(icpId) {
+      return repository.listIcpRules(icpId);
+    },
+    async replaceIcpRules(icpId, input) {
+      return repository.replaceIcpRules(icpId, input);
     },
     async getIcpStatus(icpId) {
       // TODO: include discovery/scoring freshness metadata.

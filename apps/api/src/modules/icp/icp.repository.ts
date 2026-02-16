@@ -7,11 +7,13 @@ import type {
   IcpStatusResponse,
   ListIcpProfilesQuery,
   ListIcpProfilesResponse,
+  ListIcpRulesResponse,
   QualificationRuleResponse,
+  ReplaceIcpRulesRequest,
   UpdateIcpProfileRequest,
   UpdateQualificationRuleRequest,
 } from '@lead-flood/contracts';
-import { prisma } from '@lead-flood/db';
+import { Prisma, prisma } from '@lead-flood/db';
 
 import { IcpNotFoundError, IcpNotImplementedError } from './icp.errors.js';
 
@@ -31,6 +33,8 @@ export interface IcpRepository {
     input: UpdateQualificationRuleRequest,
   ): Promise<QualificationRuleResponse>;
   deleteQualificationRule(icpId: string, ruleId: string): Promise<void>;
+  listIcpRules(icpId: string): Promise<ListIcpRulesResponse>;
+  replaceIcpRules(icpId: string, input: ReplaceIcpRulesRequest): Promise<ListIcpRulesResponse>;
   getIcpStatus(icpId: string): Promise<IcpStatusResponse>;
   getIcpDebugSample(icpProfileId: string, query: IcpDebugSampleQuery): Promise<IcpDebugSampleResponse>;
 }
@@ -313,6 +317,104 @@ function buildFeatureCandidate(input: {
   };
 }
 
+function mapQualificationRuleToResponse(
+  rule: {
+    id: string;
+    icpProfileId: string;
+    name: string;
+    ruleType: 'WEIGHTED' | 'HARD_FILTER';
+    isRequired: boolean;
+    fieldKey: string;
+    operator: 'EQ' | 'NEQ' | 'GT' | 'GTE' | 'LT' | 'LTE' | 'IN' | 'NOT_IN' | 'CONTAINS';
+    valueJson: unknown;
+    weight: number | null;
+    orderIndex: number;
+    isActive: boolean;
+    priority: number;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+): QualificationRuleResponse {
+  return {
+    id: rule.id,
+    icpProfileId: rule.icpProfileId,
+    name: rule.name,
+    ruleType: rule.ruleType,
+    isRequired: rule.isRequired,
+    fieldKey: rule.fieldKey,
+    operator: rule.operator,
+    valueJson: rule.valueJson,
+    weight: rule.weight,
+    orderIndex: rule.orderIndex,
+    isActive: rule.isActive,
+    priority: rule.priority,
+    createdAt: rule.createdAt.toISOString(),
+    updatedAt: rule.updatedAt.toISOString(),
+  };
+}
+
+function mapIcpProfileToResponse(
+  icp: {
+    id: string;
+    name: string;
+    description: string | null;
+    qualificationLogic: 'WEIGHTED';
+    metadataJson: unknown;
+    targetIndustries: string[];
+    targetCountries: string[];
+    minCompanySize: number | null;
+    maxCompanySize: number | null;
+    requiredTechnologies: string[];
+    excludedDomains: string[];
+    isActive: boolean;
+    createdByUserId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    qualificationRules?: Array<{
+      id: string;
+      icpProfileId: string;
+      name: string;
+      ruleType: 'WEIGHTED' | 'HARD_FILTER';
+      isRequired: boolean;
+      fieldKey: string;
+      operator: 'EQ' | 'NEQ' | 'GT' | 'GTE' | 'LT' | 'LTE' | 'IN' | 'NOT_IN' | 'CONTAINS';
+      valueJson: unknown;
+      weight: number | null;
+      orderIndex: number;
+      isActive: boolean;
+      priority: number;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+  },
+): IcpProfileResponse {
+  return {
+    id: icp.id,
+    name: icp.name,
+    description: icp.description,
+    qualificationLogic: icp.qualificationLogic,
+    metadataJson:
+      icp.metadataJson && typeof icp.metadataJson === 'object'
+        ? (icp.metadataJson as Record<string, unknown>)
+        : null,
+    targetIndustries: icp.targetIndustries,
+    targetCountries: icp.targetCountries,
+    minCompanySize: icp.minCompanySize,
+    maxCompanySize: icp.maxCompanySize,
+    requiredTechnologies: icp.requiredTechnologies,
+    excludedDomains: icp.excludedDomains,
+    isActive: icp.isActive,
+    createdByUserId: icp.createdByUserId,
+    createdAt: icp.createdAt.toISOString(),
+    updatedAt: icp.updatedAt.toISOString(),
+    qualificationRules: icp.qualificationRules?.map((rule) => mapQualificationRuleToResponse(rule)),
+  };
+}
+
+function toInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+}
+
 export class StubIcpRepository implements IcpRepository {
   async createIcpProfile(_input: CreateIcpProfileRequest): Promise<IcpProfileResponse> {
     throw new IcpNotImplementedError('TODO: create ICP profile persistence');
@@ -356,6 +458,14 @@ export class StubIcpRepository implements IcpRepository {
     throw new IcpNotImplementedError('TODO: delete qualification rule persistence');
   }
 
+  async listIcpRules(_icpId: string): Promise<ListIcpRulesResponse> {
+    throw new IcpNotImplementedError('TODO: list qualification rules persistence');
+  }
+
+  async replaceIcpRules(_icpId: string, _input: ReplaceIcpRulesRequest): Promise<ListIcpRulesResponse> {
+    throw new IcpNotImplementedError('TODO: replace qualification rules persistence');
+  }
+
   async getIcpStatus(_icpId: string): Promise<IcpStatusResponse> {
     throw new IcpNotImplementedError('TODO: get ICP status persistence');
   }
@@ -369,6 +479,375 @@ export class StubIcpRepository implements IcpRepository {
 }
 
 export class PrismaIcpRepository extends StubIcpRepository {
+  override async createIcpProfile(input: CreateIcpProfileRequest): Promise<IcpProfileResponse> {
+    const created = await prisma.icpProfile.create({
+      data: {
+        name: input.name,
+        description: input.description ?? null,
+        qualificationLogic: input.qualificationLogic ?? 'WEIGHTED',
+        metadataJson:
+          input.metadataJson !== undefined
+            ? toInputJson(input.metadataJson)
+            : Prisma.JsonNull,
+        targetIndustries: input.targetIndustries ?? [],
+        targetCountries: input.targetCountries ?? [],
+        minCompanySize: input.minCompanySize ?? null,
+        maxCompanySize: input.maxCompanySize ?? null,
+        requiredTechnologies: input.requiredTechnologies ?? [],
+        excludedDomains: input.excludedDomains ?? [],
+        isActive: input.isActive ?? true,
+      },
+      include: {
+        qualificationRules: {
+          orderBy: [{ orderIndex: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+    });
+
+    return mapIcpProfileToResponse(created);
+  }
+
+  override async listIcpProfiles(query: ListIcpProfilesQuery): Promise<ListIcpProfilesResponse> {
+    const where = {
+      ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+      ...(query.q
+        ? {
+            OR: [
+              { name: { contains: query.q, mode: 'insensitive' as const } },
+              { description: { contains: query.q, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      prisma.icpProfile.count({ where }),
+      prisma.icpProfile.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        include: {
+          qualificationRules: {
+            orderBy: [{ orderIndex: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+      }),
+    ]);
+
+    return {
+      items: rows.map((row) => mapIcpProfileToResponse(row)),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+    };
+  }
+
+  override async getIcpProfile(icpId: string): Promise<IcpProfileResponse> {
+    const icp = await prisma.icpProfile.findUnique({
+      where: { id: icpId },
+      include: {
+        qualificationRules: {
+          orderBy: [{ orderIndex: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+    });
+    if (!icp) {
+      throw new IcpNotFoundError();
+    }
+    return mapIcpProfileToResponse(icp);
+  }
+
+  override async updateIcpProfile(
+    icpId: string,
+    input: UpdateIcpProfileRequest,
+  ): Promise<IcpProfileResponse> {
+    try {
+      const updated = await prisma.icpProfile.update({
+        where: { id: icpId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.description !== undefined ? { description: input.description ?? null } : {}),
+          ...(input.qualificationLogic !== undefined
+            ? { qualificationLogic: input.qualificationLogic }
+            : {}),
+          ...(input.metadataJson !== undefined
+            ? {
+                metadataJson:
+                  input.metadataJson === null
+                    ? Prisma.JsonNull
+                    : toInputJson(input.metadataJson),
+              }
+            : {}),
+          ...(input.targetIndustries !== undefined
+            ? { targetIndustries: input.targetIndustries }
+            : {}),
+          ...(input.targetCountries !== undefined
+            ? { targetCountries: input.targetCountries }
+            : {}),
+          ...(input.minCompanySize !== undefined
+            ? { minCompanySize: input.minCompanySize ?? null }
+            : {}),
+          ...(input.maxCompanySize !== undefined
+            ? { maxCompanySize: input.maxCompanySize ?? null }
+            : {}),
+          ...(input.requiredTechnologies !== undefined
+            ? { requiredTechnologies: input.requiredTechnologies }
+            : {}),
+          ...(input.excludedDomains !== undefined
+            ? { excludedDomains: input.excludedDomains }
+            : {}),
+          ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        },
+        include: {
+          qualificationRules: {
+            orderBy: [{ orderIndex: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+      });
+      return mapIcpProfileToResponse(updated);
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new IcpNotFoundError();
+      }
+      throw error;
+    }
+  }
+
+  override async deleteIcpProfile(icpId: string): Promise<void> {
+    try {
+      await prisma.icpProfile.delete({
+        where: { id: icpId },
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new IcpNotFoundError();
+      }
+      throw error;
+    }
+  }
+
+  override async createQualificationRule(
+    icpId: string,
+    input: CreateQualificationRuleRequest,
+  ): Promise<QualificationRuleResponse> {
+    const icp = await prisma.icpProfile.findUnique({
+      where: { id: icpId },
+      select: { id: true },
+    });
+    if (!icp) {
+      throw new IcpNotFoundError();
+    }
+
+    const resolvedRuleType = input.ruleType ?? (input.isRequired ? 'HARD_FILTER' : 'WEIGHTED');
+    const isRequired = input.isRequired ?? resolvedRuleType === 'HARD_FILTER';
+    const priority = input.priority ?? input.orderIndex ?? 100;
+    const orderIndex = input.orderIndex ?? input.priority ?? 100;
+
+    const created = await prisma.qualificationRule.create({
+      data: {
+        icpProfileId: icpId,
+        name: input.name,
+        ruleType: resolvedRuleType,
+        isRequired,
+        fieldKey: input.fieldKey,
+        operator: input.operator,
+        valueJson: toInputJson(input.valueJson),
+        weight:
+          resolvedRuleType === 'WEIGHTED'
+            ? (input.weight ?? 1)
+            : null,
+        isActive: input.isActive ?? true,
+        orderIndex,
+        priority,
+      },
+    });
+
+    return mapQualificationRuleToResponse(created);
+  }
+
+  override async updateQualificationRule(
+    icpId: string,
+    ruleId: string,
+    input: UpdateQualificationRuleRequest,
+  ): Promise<QualificationRuleResponse> {
+    const existing = await prisma.qualificationRule.findFirst({
+      where: {
+        id: ruleId,
+        icpProfileId: icpId,
+      },
+    });
+    if (!existing) {
+      throw new IcpNotFoundError('Qualification rule not found');
+    }
+
+    const nextRuleType = input.ruleType ?? existing.ruleType;
+    const nextIsRequired = input.isRequired ?? (nextRuleType === 'HARD_FILTER');
+    const nextOrderIndex = input.orderIndex ?? existing.orderIndex;
+    const nextPriority = input.priority ?? existing.priority;
+
+    const updated = await prisma.qualificationRule.update({
+      where: { id: ruleId },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.ruleType !== undefined ? { ruleType: input.ruleType } : {}),
+        ...(input.isRequired !== undefined ? { isRequired: input.isRequired } : {}),
+        ...(input.fieldKey !== undefined ? { fieldKey: input.fieldKey } : {}),
+        ...(input.operator !== undefined ? { operator: input.operator } : {}),
+        ...(input.valueJson !== undefined ? { valueJson: toInputJson(input.valueJson) } : {}),
+        ...(input.weight !== undefined
+          ? {
+              weight:
+                nextRuleType === 'WEIGHTED'
+                  ? (input.weight ?? null)
+                  : null,
+            }
+          : nextRuleType !== 'WEIGHTED'
+            ? { weight: null }
+            : {}),
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        ...(input.orderIndex !== undefined ? { orderIndex: nextOrderIndex } : {}),
+        ...(input.priority !== undefined ? { priority: nextPriority } : {}),
+        ...(input.ruleType !== undefined && input.isRequired === undefined
+          ? { isRequired: nextIsRequired }
+          : {}),
+      },
+    });
+
+    return mapQualificationRuleToResponse(updated);
+  }
+
+  override async deleteQualificationRule(icpId: string, ruleId: string): Promise<void> {
+    const deleted = await prisma.qualificationRule.deleteMany({
+      where: {
+        id: ruleId,
+        icpProfileId: icpId,
+      },
+    });
+
+    if (deleted.count === 0) {
+      throw new IcpNotFoundError('Qualification rule not found');
+    }
+  }
+
+  override async listIcpRules(icpId: string): Promise<ListIcpRulesResponse> {
+    const icp = await prisma.icpProfile.findUnique({
+      where: { id: icpId },
+      select: { id: true },
+    });
+    if (!icp) {
+      throw new IcpNotFoundError();
+    }
+
+    const rules = await prisma.qualificationRule.findMany({
+      where: { icpProfileId: icpId },
+      orderBy: [{ orderIndex: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    return {
+      items: rules.map((rule) => mapQualificationRuleToResponse(rule)),
+    };
+  }
+
+  override async replaceIcpRules(
+    icpId: string,
+    input: ReplaceIcpRulesRequest,
+  ): Promise<ListIcpRulesResponse> {
+    const icp = await prisma.icpProfile.findUnique({
+      where: { id: icpId },
+      select: { id: true },
+    });
+    if (!icp) {
+      throw new IcpNotFoundError();
+    }
+
+    const sortedRules = [...input.rules].sort((a, b) => a.orderIndex - b.orderIndex);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.qualificationRule.deleteMany({
+        where: { icpProfileId: icpId },
+      });
+
+      for (const rule of sortedRules) {
+        const resolvedRuleType = rule.ruleType ?? (rule.isRequired ? 'HARD_FILTER' : 'WEIGHTED');
+        const isRequired = rule.isRequired ?? resolvedRuleType === 'HARD_FILTER';
+        const priority = rule.priority ?? rule.orderIndex;
+
+        await tx.qualificationRule.create({
+          data: {
+            icpProfileId: icpId,
+            name: rule.name,
+            ruleType: resolvedRuleType,
+            isRequired,
+            fieldKey: rule.fieldKey,
+            operator: rule.operator,
+            valueJson: toInputJson(rule.valueJson),
+            weight:
+              resolvedRuleType === 'WEIGHTED'
+                ? (rule.weight ?? 1)
+                : null,
+            isActive: rule.isActive ?? true,
+            orderIndex: rule.orderIndex,
+            priority,
+          },
+        });
+      }
+    });
+
+    return this.listIcpRules(icpId);
+  }
+
+  override async getIcpStatus(icpId: string): Promise<IcpStatusResponse> {
+    const [icp, rules, lastDiscovery, lastScore] = await Promise.all([
+      prisma.icpProfile.findUnique({
+        where: { id: icpId },
+        select: { id: true, isActive: true },
+      }),
+      prisma.qualificationRule.findMany({
+        where: { icpProfileId: icpId },
+        select: {
+          id: true,
+          isActive: true,
+          ruleType: true,
+          isRequired: true,
+        },
+      }),
+      prisma.leadDiscoveryRecord.findFirst({
+        where: { icpProfileId: icpId },
+        orderBy: [{ discoveredAt: 'desc' }, { createdAt: 'desc' }],
+        select: { discoveredAt: true },
+      }),
+      prisma.leadScorePrediction.findFirst({
+        where: { icpProfileId: icpId },
+        orderBy: [{ predictedAt: 'desc' }, { createdAt: 'desc' }],
+        select: { predictedAt: true },
+      }),
+    ]);
+
+    if (!icp) {
+      throw new IcpNotFoundError();
+    }
+
+    const activeRules = rules.filter((rule) => rule.isActive);
+    const hardFilterRules = activeRules.filter(
+      (rule) => rule.ruleType === 'HARD_FILTER' || rule.isRequired,
+    ).length;
+    const weightedRules = activeRules.filter(
+      (rule) => rule.ruleType === 'WEIGHTED' && !rule.isRequired,
+    ).length;
+
+    return {
+      icpId,
+      isActive: icp.isActive,
+      totalRules: rules.length,
+      activeRules: activeRules.length,
+      hardFilterRules,
+      weightedRules,
+      lastDiscoveryAt: lastDiscovery?.discoveredAt.toISOString() ?? null,
+      lastScoredAt: lastScore?.predictedAt.toISOString() ?? null,
+    };
+  }
+
   override async getIcpDebugSample(
     icpProfileId: string,
     query: IcpDebugSampleQuery,
@@ -378,7 +857,7 @@ export class PrismaIcpRepository extends StubIcpRepository {
       include: {
         qualificationRules: {
           where: { isActive: true },
-          orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
+          orderBy: [{ orderIndex: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }],
         },
       },
     });

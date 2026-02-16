@@ -12,7 +12,9 @@ import {
   IcpStatusResponseSchema,
   ListIcpProfilesQuerySchema,
   ListIcpProfilesResponseSchema,
+  ListIcpRulesResponseSchema,
   QualificationRuleResponseSchema,
+  ReplaceIcpRulesRequestSchema,
   UpdateIcpProfileRequestSchema,
   UpdateQualificationRuleRequestSchema,
 } from '@lead-flood/contracts';
@@ -162,6 +164,45 @@ export function registerIcpRoutes(app: FastifyInstance): void {
     try {
       const result = await service.createQualificationRule(parsedParams.data.icpId, parsedBody.data);
       return QualificationRuleResponseSchema.parse(result);
+    } catch (error: unknown) {
+      if (handleModuleError(error, request, reply)) {
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.get('/v1/icps/:icpId/rules', async (request, reply) => {
+    const parsedParams = IcpIdParamsSchema.safeParse(request.params);
+    if (!parsedParams.success) {
+      return sendValidationError(reply, request.id, 'Invalid ICP id');
+    }
+
+    try {
+      const result = await service.listIcpRules(parsedParams.data.icpId);
+      return ListIcpRulesResponseSchema.parse(result);
+    } catch (error: unknown) {
+      if (handleModuleError(error, request, reply)) {
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.put('/v1/icps/:icpId/rules', async (request, reply) => {
+    const parsedParams = IcpIdParamsSchema.safeParse(request.params);
+    if (!parsedParams.success) {
+      return sendValidationError(reply, request.id, 'Invalid ICP id');
+    }
+
+    const parsedBody = ReplaceIcpRulesRequestSchema.safeParse(request.body);
+    if (!parsedBody.success) {
+      return sendValidationError(reply, request.id, 'Invalid ICP rules payload');
+    }
+
+    try {
+      const result = await service.replaceIcpRules(parsedParams.data.icpId, parsedBody.data);
+      return ListIcpRulesResponseSchema.parse(result);
     } catch (error: unknown) {
       if (handleModuleError(error, request, reply)) {
         return;
