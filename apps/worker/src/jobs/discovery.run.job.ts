@@ -197,27 +197,136 @@ function quoteSearchTerm(term: string): string {
   return term.includes(' ') ? `"${term}"` : term;
 }
 
+function toCountryDomainHints(country: string): string[] {
+  const normalized = normalizeString(country);
+  if (!normalized) {
+    return [];
+  }
+
+  if (
+    ['uae', 'united arab emirates', 'emirates', 'ae'].includes(normalized)
+  ) {
+    return ['ae'];
+  }
+  if (
+    ['ksa', 'saudi arabia', 'saudi', 'sa'].includes(normalized)
+  ) {
+    return ['sa'];
+  }
+  if (['jordan', 'jo'].includes(normalized)) {
+    return ['jo'];
+  }
+  if (['egypt', 'eg'].includes(normalized)) {
+    return ['eg'];
+  }
+
+  if (normalized.length === 2) {
+    return [normalized];
+  }
+
+  return [];
+}
+
 function buildGoogleSearchQueryFromFilters(filters: DiscoveryRunFilters | undefined): string {
   if (!filters) {
     return 'B2B companies';
   }
 
-  const includeTerms = uniqueStrings([
-    ...(filters.industries ?? []),
-    ...(filters.countries ?? []),
-    ...(filters.requiredTechnologies ?? []),
-    ...(filters.includeTerms ?? []),
-  ]);
-  const parts: string[] = [];
-  if (includeTerms.length > 0) {
-    parts.push(includeTerms.map((term) => quoteSearchTerm(term)).join(' '));
-  } else {
-    parts.push('B2B companies');
+  const industries = uniqueStrings(filters.industries ?? []);
+  const countries = uniqueStrings(filters.countries ?? []);
+  const technologies = uniqueStrings(filters.requiredTechnologies ?? []);
+  const includeTerms = uniqueStrings(filters.includeTerms ?? []);
+  const excludedDomains = uniqueStrings(filters.excludedDomains ?? []);
+  const excludedTerms = uniqueStrings(filters.excludeTerms ?? []);
+
+  const hasTargetingContext =
+    industries.length > 0 || countries.length > 0 || technologies.length > 0 || includeTerms.length > 0;
+
+  if (hasTargetingContext) {
+    const seenClauses = new Set<string>();
+    const richClauses: string[] = [];
+    const addClause = (value: string): void => {
+      const clause = value.trim();
+      if (!clause) {
+        return;
+      }
+
+      const key = clause.toLowerCase();
+      if (seenClauses.has(key)) {
+        return;
+      }
+
+      seenClauses.add(key);
+      richClauses.push(clause);
+    };
+
+    const prioritizedIndustries = industries.slice(0, 3);
+    const prioritizedCountries = countries.slice(0, 3);
+
+    if (prioritizedIndustries.length > 0 && prioritizedCountries.length > 0) {
+      for (const country of prioritizedCountries) {
+        const countryTerm = quoteSearchTerm(country);
+        const countryDomains = toCountryDomainHints(country);
+
+        for (const industry of prioritizedIndustries) {
+          const industryTerm = quoteSearchTerm(industry);
+          addClause(`${industryTerm} ${countryTerm} "contact us" "WhatsApp"`);
+          addClause(`"DM to order" ${industryTerm} ${countryTerm}`);
+          addClause(`"send payment link" ${industryTerm} ${countryTerm}`);
+
+          for (const countryDomain of countryDomains.slice(0, 2)) {
+            addClause(`site:.${countryDomain} ${industryTerm} "contact us" WhatsApp`);
+          }
+        }
+
+        addClause(`${countryTerm} "DM for orders" "WhatsApp order"`);
+        addClause(`${countryTerm} "shop online" "order now"`);
+      }
+    }
+
+    const broadIntentTerms = [
+      '"contact us"',
+      '"order now"',
+      '"DM for orders"',
+      '"WhatsApp"',
+      '"WhatsApp order"',
+      '"shop online"',
+    ];
+
+    const targetingTerms = [
+      ...prioritizedIndustries.map((value) => quoteSearchTerm(value)),
+      ...prioritizedCountries.map((value) => quoteSearchTerm(value)),
+      ...technologies.slice(0, 2).map((value) => quoteSearchTerm(value)),
+      ...includeTerms.slice(0, 2).map((value) => quoteSearchTerm(value)),
+    ];
+
+    if (targetingTerms.length > 0) {
+      addClause(`${targetingTerms.join(' ')} ${broadIntentTerms.join(' ')}`);
+    } else {
+      addClause(`SMB businesses ${broadIntentTerms.join(' ')}`);
+    }
+
+    const maxClauses = 8;
+    const queryClauses = richClauses.slice(0, maxClauses);
+    const parts: string[] = [];
+    if (queryClauses.length > 0) {
+      parts.push(queryClauses.map((clause) => `(${clause})`).join(' OR '));
+    }
+    for (const domain of excludedDomains) {
+      parts.push(`-site:${domain}`);
+    }
+    for (const term of excludedTerms) {
+      parts.push(`-${quoteSearchTerm(term)}`);
+    }
+
+    return parts.join(' ').trim();
   }
-  for (const domain of uniqueStrings(filters.excludedDomains ?? [])) {
+
+  const parts: string[] = ['B2B companies'];
+  for (const domain of excludedDomains) {
     parts.push(`-site:${domain}`);
   }
-  for (const term of uniqueStrings(filters.excludeTerms ?? [])) {
+  for (const term of excludedTerms) {
     parts.push(`-${quoteSearchTerm(term)}`);
   }
   return parts.join(' ').trim();
@@ -571,8 +680,19 @@ async function executeDiscoveryProvider(
         return { provider, source: 'disabled', leads: [], nextCursor: null };
       }
 
+      const googleRequest = toGoogleSearchRequest(payload, limit, correlationId);
+      logger.info(
+        {
+          jobId,
+          runId: payload.runId,
+          correlationId,
+          provider,
+          query: googleRequest.query,
+        },
+        'Google discovery query',
+      );
       const result = await dependencies.googleSearchAdapter.discoverLeads(
-        toGoogleSearchRequest(payload, limit, correlationId),
+        googleRequest,
       );
       return {
         provider,
