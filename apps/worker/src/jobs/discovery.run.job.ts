@@ -104,6 +104,12 @@ interface DiscoveryExecutionResult {
   nextCursor: string | null;
 }
 
+interface DiscoveryRunProgress {
+  totalItems: number;
+  processedItems: number;
+  failedItems: number;
+}
+
 function deriveLeadName(email: string): { firstName: string; lastName: string } {
   const localPart = email.split('@')[0] ?? 'lead';
   const [first, ...rest] = localPart.split('.');
@@ -116,6 +122,31 @@ function deriveLeadName(email: string): { firstName: string; lastName: string } 
 
 function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+}
+
+function toCount(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+
+  return 0;
+}
+
+function readRunProgress(result: unknown): DiscoveryRunProgress {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return {
+      totalItems: 0,
+      processedItems: 0,
+      failedItems: 0,
+    };
+  }
+
+  const payload = result as Record<string, unknown>;
+  return {
+    totalItems: toCount(payload.totalItems),
+    processedItems: toCount(payload.processedItems),
+    failedItems: toCount(payload.failedItems),
+  };
 }
 
 function normalizeString(value: unknown): string | null {
@@ -614,6 +645,113 @@ async function executeDiscoveryProvider(
   }
 }
 
+async function markDiscoveryRunJobRunning(
+  runId: string,
+  payload: DiscoveryRunJobPayload,
+): Promise<void> {
+  await prisma.jobExecution.upsert({
+    where: { id: runId },
+    create: {
+      id: runId,
+      type: DISCOVERY_RUN_JOB_NAME,
+      status: 'running',
+      attempts: 1,
+      payload: toInputJson(payload),
+      result: toInputJson({
+        totalItems: 0,
+        processedItems: 0,
+        failedItems: 0,
+      }),
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+    },
+    update: {
+      status: 'running',
+      attempts: {
+        increment: 1,
+      },
+      payload: toInputJson(payload),
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+    },
+  });
+}
+
+async function markDiscoveryRunJobFailed(
+  runId: string,
+  payload: DiscoveryRunJobPayload,
+  errorMessage: string,
+): Promise<void> {
+  await prisma.jobExecution.upsert({
+    where: { id: runId },
+    create: {
+      id: runId,
+      type: DISCOVERY_RUN_JOB_NAME,
+      status: 'failed',
+      attempts: 1,
+      payload: toInputJson(payload),
+      result: toInputJson({
+        totalItems: 0,
+        processedItems: 0,
+        failedItems: 0,
+      }),
+      error: errorMessage,
+      startedAt: new Date(),
+      finishedAt: new Date(),
+    },
+    update: {
+      status: 'failed',
+      payload: toInputJson(payload),
+      error: errorMessage,
+      finishedAt: new Date(),
+    },
+  });
+}
+
+async function markDiscoveryRunJobProgress(
+  runId: string,
+  payload: DiscoveryRunJobPayload,
+  progress: DiscoveryRunProgress,
+  nextCursor: string | null,
+  selectedProvider: DiscoveryProvider,
+): Promise<void> {
+  const hasNextCursor = Boolean(nextCursor && nextCursor !== payload.cursor);
+
+  await prisma.jobExecution.upsert({
+    where: { id: runId },
+    create: {
+      id: runId,
+      type: DISCOVERY_RUN_JOB_NAME,
+      status: hasNextCursor ? 'running' : 'completed',
+      attempts: 1,
+      payload: toInputJson(payload),
+      result: toInputJson({
+        ...progress,
+        provider: selectedProvider,
+        cursor: payload.cursor ?? null,
+        nextCursor,
+      }),
+      error: null,
+      startedAt: new Date(),
+      finishedAt: hasNextCursor ? null : new Date(),
+    },
+    update: {
+      status: hasNextCursor ? 'running' : 'completed',
+      payload: toInputJson(payload),
+      result: toInputJson({
+        ...progress,
+        provider: selectedProvider,
+        cursor: payload.cursor ?? null,
+        nextCursor,
+      }),
+      error: null,
+      finishedAt: hasNextCursor ? null : new Date(),
+    },
+  });
+}
+
 export async function handleDiscoveryRunJob(
   logger: DiscoveryRunLogger,
   job: Job<DiscoveryRunJobPayload>,
@@ -637,6 +775,8 @@ export async function handleDiscoveryRunJob(
     'Started discovery.run job',
   );
 
+  await markDiscoveryRunJobRunning(runId, job.data);
+
   if (!dependencies.discoveryEnabled) {
     logger.warn(
       {
@@ -646,6 +786,7 @@ export async function handleDiscoveryRunJob(
       },
       'Skipping discovery.run job because discovery is disabled',
     );
+    await markDiscoveryRunJobFailed(runId, job.data, 'Discovery is disabled');
     return;
   }
 
@@ -658,6 +799,7 @@ export async function handleDiscoveryRunJob(
       },
       'Skipping discovery.run job because icpProfileId is required',
     );
+    await markDiscoveryRunJobFailed(runId, job.data, 'Discovery run requires icpProfileId');
     return;
   }
 
@@ -684,6 +826,7 @@ export async function handleDiscoveryRunJob(
       },
       'Skipping discovery.run job because icpProfile was not found',
     );
+    await markDiscoveryRunJobFailed(runId, job.data, 'Discovery run icpProfile was not found');
     return;
   }
 
@@ -876,6 +1019,30 @@ export async function handleDiscoveryRunJob(
       });
     }
 
+    const existingRunExecution = await prisma.jobExecution.findUnique({
+      where: { id: runId },
+      select: { result: true },
+    });
+    const existingProgress = readRunProgress(existingRunExecution?.result ?? null);
+    const pageFailedItems = Math.max(discoveryResult.leads.length - persistedDiscoveryRecords, 0);
+    const updatedProgress: DiscoveryRunProgress = {
+      processedItems: existingProgress.processedItems + persistedDiscoveryRecords,
+      failedItems: existingProgress.failedItems + pageFailedItems,
+      totalItems:
+        existingProgress.processedItems +
+        persistedDiscoveryRecords +
+        existingProgress.failedItems +
+        pageFailedItems,
+    };
+
+    await markDiscoveryRunJobProgress(
+      runId,
+      discoveryPayload,
+      updatedProgress,
+      discoveryResult.nextCursor,
+      selectedProvider,
+    );
+
     logger.info(
       {
         jobId: job.id,
@@ -932,6 +1099,12 @@ export async function handleDiscoveryRunJob(
         error,
       },
       'Failed discovery.run job',
+    );
+
+    await markDiscoveryRunJobFailed(
+      runId,
+      job.data,
+      error instanceof Error ? error.message : 'Unknown discovery run failure',
     );
 
     throw error;
