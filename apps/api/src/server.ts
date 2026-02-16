@@ -22,7 +22,10 @@ import {
 } from '@lead-flood/contracts';
 
 import type { ApiEnv } from './env.js';
-import { registerApiModules } from './modules/index.js';
+import { registerDiscoveryRoutes } from './modules/discovery/discovery.routes.js';
+import { registerEnrichmentRoutes } from './modules/enrichment/enrichment.routes.js';
+import { registerIcpRoutes } from './modules/icp/icp.routes.js';
+import { registerScoringRoutes } from './modules/scoring/scoring.routes.js';
 
 export class LeadAlreadyExistsError extends Error {
   constructor(message = 'Lead already exists') {
@@ -227,7 +230,10 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     });
   });
 
-  registerApiModules(app);
+  registerIcpRoutes(app);
+  registerDiscoveryRoutes(app);
+  registerEnrichmentRoutes(app);
+  registerScoringRoutes(app);
 
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send(
