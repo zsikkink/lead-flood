@@ -35,6 +35,10 @@ enum QualificationRuleType {
   HARD_FILTER
 }
 
+enum QualificationLogic {
+  WEIGHTED
+}
+
 enum QualificationOperator {
   EQ
   NEQ
@@ -198,6 +202,8 @@ model IcpProfile {
   id                   String               @id @default(cuid())
   name                 String
   description          String?
+  qualificationLogic   QualificationLogic   @default(WEIGHTED)
+  metadataJson         Json?
   targetIndustries     String[]             @default([])
   targetCountries      String[]             @default([])
   minCompanySize       Int?
@@ -225,15 +231,18 @@ model QualificationRule {
   icpProfile   IcpProfile            @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
   name         String
   ruleType     QualificationRuleType
+  isRequired   Boolean               @default(false)
   fieldKey     String
   operator     QualificationOperator
   valueJson    Json
   weight       Float?
+  orderIndex   Int                   @default(100)
   isActive     Boolean               @default(true)
   priority     Int                   @default(100)
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
 
+  @@index([icpProfileId, isActive, orderIndex])
   @@index([icpProfileId, isActive, priority])
 }
 
