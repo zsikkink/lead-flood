@@ -50,6 +50,27 @@ export const FEATURE_KEYS = [
   'has_email',
   'has_domain',
   'has_company_name',
+  'country',
+  'industry',
+  'industry_supported',
+  'has_whatsapp',
+  'has_instagram',
+  'accepts_online_payments',
+  'review_count',
+  'follower_count',
+  'physical_address_present',
+  'physical_location',
+  'physical_store_present',
+  'recent_activity',
+  'custom_order_signals',
+  'pure_self_serve_ecom',
+  'shopify_detected',
+  'abandonment_signal_detected',
+  'multi_staff_detected',
+  'follower_growth_signal',
+  'high_engagement_signal',
+  'has_booking_or_contact_form',
+  'variable_pricing_detected',
   'industry_match',
   'industry_match_reason',
   'geo_match',
@@ -69,6 +90,129 @@ function toInputJson(value: unknown): Prisma.InputJsonValue {
 
 function normalizeString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeCountry(value: unknown): string | null {
+  const normalized = normalizeString(value)?.toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (['uae', 'ae', 'united arab emirates'].includes(normalized)) {
+    return 'UAE';
+  }
+  if (['ksa', 'saudi arabia', 'sa'].includes(normalized)) {
+    return 'KSA';
+  }
+  if (['jordan', 'jo'].includes(normalized)) {
+    return 'Jordan';
+  }
+  if (['egypt', 'eg'].includes(normalized)) {
+    return 'Egypt';
+  }
+
+  return normalized.toUpperCase();
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value > 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', 'yes', 'y', '1'].includes(normalized)) {
+      return true;
+    }
+    if (['false', 'no', 'n', '0'].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
+}
+
+function findValueByKey(input: unknown, targetKey: string): unknown {
+  if (!input || typeof input !== 'object') {
+    return undefined;
+  }
+
+  const entries = Object.entries(input as Record<string, unknown>);
+  for (const [key, value] of entries) {
+    if (key === targetKey) {
+      return value;
+    }
+  }
+
+  for (const [, value] of entries) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const nested = findValueByKey(item, targetKey);
+        if (nested !== undefined) {
+          return nested;
+        }
+      }
+      continue;
+    }
+
+    if (value && typeof value === 'object') {
+      const nested = findValueByKey(value, targetKey);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function extractNumberFromSources(
+  sources: unknown[],
+  candidateKeys: readonly string[],
+): number | null {
+  for (const source of sources) {
+    for (const key of candidateKeys) {
+      const value = findValueByKey(source, key);
+      const numeric = asNumber(value);
+      if (numeric !== null) {
+        return numeric;
+      }
+    }
+  }
+  return null;
+}
+
+function extractBooleanFromSources(
+  sources: unknown[],
+  candidateKeys: readonly string[],
+): boolean | null {
+  for (const source of sources) {
+    for (const key of candidateKeys) {
+      const value = findValueByKey(source, key);
+      const bool = asBoolean(value);
+      if (bool !== null) {
+        return bool;
+      }
+    }
+  }
+  return null;
+}
+
+function includesAnyKeyword(value: unknown, keywords: readonly string[]): boolean {
+  const text = stableStringify(value).toLowerCase();
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 function stableSort(value: unknown): unknown {
@@ -128,6 +272,27 @@ function buildFeaturePayload(input: {
   hasEmail: boolean;
   hasDomain: boolean;
   hasCompanyName: boolean;
+  country: string | null;
+  industry: string | null;
+  industrySupported: boolean;
+  hasWhatsapp: boolean;
+  hasInstagram: boolean;
+  acceptsOnlinePayments: boolean;
+  reviewCount: number;
+  followerCount: number;
+  physicalAddressPresent: boolean;
+  physicalLocation: boolean;
+  physicalStorePresent: boolean;
+  recentActivity: boolean;
+  customOrderSignals: boolean;
+  pureSelfServeEcom: boolean;
+  shopifyDetected: boolean;
+  abandonmentSignalDetected: boolean;
+  multiStaffDetected: boolean;
+  followerGrowthSignal: boolean;
+  highEngagementSignal: boolean;
+  hasBookingOrContactForm: boolean;
+  variablePricingDetected: boolean;
   industryMatch: boolean;
   industryMatchReason: string;
   geoMatch: boolean;
@@ -145,6 +310,27 @@ function buildFeaturePayload(input: {
     has_email: input.hasEmail,
     has_domain: input.hasDomain,
     has_company_name: input.hasCompanyName,
+    country: input.country,
+    industry: input.industry,
+    industry_supported: input.industrySupported,
+    has_whatsapp: input.hasWhatsapp,
+    has_instagram: input.hasInstagram,
+    accepts_online_payments: input.acceptsOnlinePayments,
+    review_count: input.reviewCount,
+    follower_count: input.followerCount,
+    physical_address_present: input.physicalAddressPresent,
+    physical_location: input.physicalLocation,
+    physical_store_present: input.physicalStorePresent,
+    recent_activity: input.recentActivity,
+    custom_order_signals: input.customOrderSignals,
+    pure_self_serve_ecom: input.pureSelfServeEcom,
+    shopify_detected: input.shopifyDetected,
+    abandonment_signal_detected: input.abandonmentSignalDetected,
+    multi_staff_detected: input.multiStaffDetected,
+    follower_growth_signal: input.followerGrowthSignal,
+    high_engagement_signal: input.highEngagementSignal,
+    has_booking_or_contact_form: input.hasBookingOrContactForm,
+    variable_pricing_detected: input.variablePricingDetected,
     industry_match: input.industryMatch,
     industry_match_reason: input.industryMatchReason,
     geo_match: input.geoMatch,
@@ -164,11 +350,13 @@ function asDeterministicRules(value: Awaited<ReturnType<typeof prisma.qualificat
     id: rule.id,
     name: rule.name,
     ruleType: rule.ruleType,
+    isRequired: rule.isRequired,
     fieldKey: rule.fieldKey,
     operator: rule.operator,
     valueJson: rule.valueJson,
     weight: rule.weight,
     isActive: rule.isActive,
+    orderIndex: rule.orderIndex,
     priority: rule.priority,
   }));
 }
@@ -254,7 +442,7 @@ export async function handleFeaturesComputeJob(
             icpProfileId,
             isActive: true,
           },
-          orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
+          orderBy: [{ orderIndex: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }],
         }),
       ]);
 
@@ -285,24 +473,103 @@ export async function handleFeaturesComputeJob(
       latestEnrichment?.normalizedPayload && typeof latestEnrichment.normalizedPayload === 'object'
         ? (latestEnrichment.normalizedPayload as Record<string, unknown>)
         : null;
+    const enrichmentRawPayload = latestEnrichment?.rawPayload ?? null;
+    const discoveryRawPayload = latestDiscovery?.rawPayload ?? null;
+    const featureSources = [normalizedPayload, enrichmentRawPayload, discoveryRawPayload];
 
     const companyName =
       normalizeString(normalizedPayload?.companyName) ??
-      normalizeString(normalizedPayload?.company_name);
-    const industry = normalizeString(normalizedPayload?.industry);
-    const geoCountry =
-      normalizeString(normalizedPayload?.country) ??
-      normalizeString(normalizedPayload?.locationCountry);
-    const companySizeRaw = normalizedPayload?.employeeCount ?? normalizedPayload?.companySize;
+      normalizeString(normalizedPayload?.company_name) ??
+      normalizeString(findValueByKey(discoveryRawPayload, 'companyName'));
+    const industry =
+      normalizeString(normalizedPayload?.industry) ??
+      normalizeString(findValueByKey(enrichmentRawPayload, 'industry')) ??
+      normalizeString(findValueByKey(discoveryRawPayload, 'industry'));
+    const country = normalizeCountry(
+      normalizedPayload?.country ??
+        normalizedPayload?.locationCountry ??
+        findValueByKey(enrichmentRawPayload, 'country') ??
+        findValueByKey(discoveryRawPayload, 'country'),
+    );
     const companySize =
-      typeof companySizeRaw === 'number' && Number.isFinite(companySizeRaw)
-        ? companySizeRaw
-        : null;
+      extractNumberFromSources(featureSources, [
+        'employeeCount',
+        'companySize',
+        'employees',
+        'teamSize',
+      ]) ?? null;
+    const reviewCount =
+      extractNumberFromSources(featureSources, ['reviewCount', 'reviews', 'ratingsCount']) ?? 0;
+    const followerCount =
+      extractNumberFromSources(featureSources, ['followerCount', 'followers', 'instagramFollowers']) ??
+      0;
+    const recentActivityDays =
+      extractNumberFromSources(featureSources, ['lastActivityDays', 'daysSinceLastPost']) ?? null;
+
+    const hasWhatsapp =
+      extractBooleanFromSources(featureSources, ['hasWhatsapp', 'whatsapp']) ??
+      includesAnyKeyword(featureSources, ['whatsapp', 'wa.me']);
+    const hasInstagram =
+      extractBooleanFromSources(featureSources, ['hasInstagram', 'instagramActive']) ??
+      includesAnyKeyword(featureSources, ['instagram.com', 'instagram']);
+    const acceptsOnlinePayments =
+      extractBooleanFromSources(featureSources, ['acceptsOnlinePayments', 'onlinePayments']) ??
+      includesAnyKeyword(featureSources, [
+        'online payment',
+        'checkout',
+        'stripe',
+        'paytabs',
+        'apple pay',
+        'mada',
+      ]);
+    const physicalAddressPresent =
+      extractBooleanFromSources(featureSources, ['physicalAddressPresent', 'hasAddress']) ??
+      Boolean(normalizeString(findValueByKey(featureSources, 'address')));
+    const physicalLocation =
+      extractBooleanFromSources(featureSources, ['physicalLocation']) ?? physicalAddressPresent;
+    const physicalStorePresent =
+      extractBooleanFromSources(featureSources, ['physicalStorePresent']) ??
+      physicalAddressPresent;
+    const recentActivity =
+      extractBooleanFromSources(featureSources, ['recentActivity', 'isRecentlyActive']) ??
+      (recentActivityDays !== null ? recentActivityDays <= 45 : false);
+    const customOrderSignals =
+      extractBooleanFromSources(featureSources, ['customOrderSignals']) ??
+      includesAnyKeyword(featureSources, ['custom order', 'made to order', 'dm to order']);
+    const shopifyDetected =
+      extractBooleanFromSources(featureSources, ['shopifyDetected']) ??
+      includesAnyKeyword(featureSources, ['shopify', 'myshopify']);
+    const abandonmentSignalDetected =
+      extractBooleanFromSources(featureSources, ['abandonmentSignalDetected']) ??
+      includesAnyKeyword(featureSources, ['abandoned cart', 'cart recovery']);
+    const multiStaffDetected =
+      extractBooleanFromSources(featureSources, ['multiStaffDetected']) ??
+      (companySize !== null ? companySize >= 4 : false);
+    const followerGrowthSignal =
+      extractBooleanFromSources(featureSources, ['followerGrowthSignal']) ??
+      ((extractNumberFromSources(featureSources, ['followerGrowthRate']) ?? 0) > 0);
+    const highEngagementSignal =
+      extractBooleanFromSources(featureSources, ['highEngagementSignal']) ??
+      ((extractNumberFromSources(featureSources, ['engagementRate']) ?? 0) >= 0.03);
+    const hasBookingOrContactForm =
+      extractBooleanFromSources(featureSources, ['hasBookingOrContactForm']) ??
+      includesAnyKeyword(featureSources, ['book now', 'book a call', 'contact us', 'appointment']);
+    const variablePricingDetected =
+      extractBooleanFromSources(featureSources, ['variablePricingDetected']) ??
+      includesAnyKeyword(featureSources, ['starting at', 'from ', 'price on request']);
+    const pureSelfServeEcom =
+      extractBooleanFromSources(featureSources, ['pureSelfServeEcom']) ??
+      (shopifyDetected && !hasWhatsapp && !customOrderSignals);
 
     const targetIndustries = new Set(icp.targetIndustries.map((entry) => entry.toLowerCase()));
-    const targetCountries = new Set(icp.targetCountries.map((entry) => entry.toLowerCase()));
+    const targetCountries = new Set(
+      icp.targetCountries
+        .map((entry) => normalizeCountry(entry))
+        .filter((entry): entry is string => entry !== null)
+        .map((entry) => entry.toLowerCase()),
+    );
     const normalizedIndustry = industry?.toLowerCase() ?? null;
-    const normalizedCountry = geoCountry?.toLowerCase() ?? null;
+    const normalizedCountry = country?.toLowerCase() ?? null;
 
     const industryMatch =
       targetIndustries.size === 0 ||
@@ -310,12 +577,34 @@ export async function handleFeaturesComputeJob(
     const geoMatch =
       targetCountries.size === 0 ||
       (normalizedCountry !== null && targetCountries.has(normalizedCountry));
+    const industrySupported = industryMatch;
 
     const featurePayload = buildFeaturePayload({
       sourceProvider: latestDiscovery?.provider ?? 'UNKNOWN',
       hasEmail: Boolean(normalizeString(lead.email)),
       hasDomain: Boolean(domain),
       hasCompanyName: Boolean(companyName),
+      country,
+      industry,
+      industrySupported,
+      hasWhatsapp,
+      hasInstagram,
+      acceptsOnlinePayments,
+      reviewCount,
+      followerCount,
+      physicalAddressPresent,
+      physicalLocation,
+      physicalStorePresent,
+      recentActivity,
+      customOrderSignals,
+      pureSelfServeEcom,
+      shopifyDetected,
+      abandonmentSignalDetected,
+      multiStaffDetected,
+      followerGrowthSignal,
+      highEngagementSignal,
+      hasBookingOrContactForm,
+      variablePricingDetected,
       industryMatch,
       industryMatchReason:
         targetIndustries.size === 0
