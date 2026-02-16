@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const QualificationRuleTypeSchema = z.enum(['WEIGHTED', 'HARD_FILTER']);
+export const QualificationLogicSchema = z.enum(['WEIGHTED']);
 
 export const QualificationOperatorSchema = z.enum([
   'EQ',
@@ -43,6 +44,8 @@ export const CreateIcpProfileRequestSchema = z
   .object({
     name: z.string().min(1).max(120),
     description: z.string().max(2000).optional(),
+    qualificationLogic: QualificationLogicSchema.optional(),
+    metadataJson: z.record(z.unknown()).optional(),
     targetIndustries: z.array(z.string().min(1)).optional(),
     targetCountries: z.array(z.string().min(1)).optional(),
     minCompanySize: z.number().int().positive().optional(),
@@ -67,6 +70,8 @@ export const UpdateIcpProfileRequestSchema = z
   .object({
     name: z.string().min(1).max(120).optional(),
     description: z.string().max(2000).optional(),
+    qualificationLogic: QualificationLogicSchema.optional(),
+    metadataJson: z.record(z.unknown()).nullable().optional(),
     targetIndustries: z.array(z.string().min(1)).optional(),
     targetCountries: z.array(z.string().min(1)).optional(),
     minCompanySize: z.number().int().positive().nullable().optional(),
@@ -80,12 +85,14 @@ export const UpdateIcpProfileRequestSchema = z
 export const CreateQualificationRuleRequestSchema = z
   .object({
     name: z.string().min(1).max(120),
-    ruleType: QualificationRuleTypeSchema,
+    ruleType: QualificationRuleTypeSchema.optional(),
+    isRequired: z.boolean().optional(),
     fieldKey: z.string().min(1).max(120),
     operator: QualificationOperatorSchema,
     valueJson: z.unknown(),
-    weight: z.number().min(0).max(1).optional(),
+    weight: z.number().min(-10).max(10).optional(),
     isActive: z.boolean().optional(),
+    orderIndex: z.number().int().min(1).max(5000).optional(),
     priority: z.number().int().min(1).max(1000).optional(),
   })
   .strict();
@@ -94,12 +101,35 @@ export const UpdateQualificationRuleRequestSchema = z
   .object({
     name: z.string().min(1).max(120).optional(),
     ruleType: QualificationRuleTypeSchema.optional(),
+    isRequired: z.boolean().optional(),
     fieldKey: z.string().min(1).max(120).optional(),
     operator: QualificationOperatorSchema.optional(),
     valueJson: z.unknown().optional(),
-    weight: z.number().min(0).max(1).nullable().optional(),
+    weight: z.number().min(-10).max(10).nullable().optional(),
     isActive: z.boolean().optional(),
+    orderIndex: z.number().int().min(1).max(5000).optional(),
     priority: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
+
+export const ReplaceQualificationRuleInputSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    ruleType: QualificationRuleTypeSchema.optional(),
+    isRequired: z.boolean().optional(),
+    fieldKey: z.string().min(1).max(120),
+    operator: QualificationOperatorSchema,
+    valueJson: z.unknown(),
+    weight: z.number().min(-10).max(10).nullable().optional(),
+    isActive: z.boolean().optional(),
+    orderIndex: z.number().int().min(1).max(5000),
+    priority: z.number().int().min(1).max(1000).optional(),
+  })
+  .strict();
+
+export const ReplaceIcpRulesRequestSchema = z
+  .object({
+    rules: z.array(ReplaceQualificationRuleInputSchema).max(200),
   })
   .strict();
 
@@ -109,14 +139,22 @@ export const QualificationRuleResponseSchema = z
     icpProfileId: z.string(),
     name: z.string(),
     ruleType: QualificationRuleTypeSchema,
+    isRequired: z.boolean(),
     fieldKey: z.string(),
     operator: QualificationOperatorSchema,
     valueJson: z.unknown(),
     weight: z.number().nullable(),
+    orderIndex: z.number().int(),
     isActive: z.boolean(),
     priority: z.number().int(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export const ListIcpRulesResponseSchema = z
+  .object({
+    items: z.array(QualificationRuleResponseSchema),
   })
   .strict();
 
@@ -125,6 +163,8 @@ export const IcpProfileResponseSchema = z
     id: z.string(),
     name: z.string(),
     description: z.string().nullable(),
+    qualificationLogic: QualificationLogicSchema,
+    metadataJson: z.record(z.unknown()).nullable(),
     targetIndustries: z.array(z.string()),
     targetCountries: z.array(z.string()),
     minCompanySize: z.number().int().nullable(),
@@ -227,6 +267,7 @@ export const IcpDebugSampleResponseSchema = z
   .strict();
 
 export type QualificationRuleType = z.infer<typeof QualificationRuleTypeSchema>;
+export type QualificationLogic = z.infer<typeof QualificationLogicSchema>;
 export type QualificationOperator = z.infer<typeof QualificationOperatorSchema>;
 export type CreateIcpProfileRequest = z.infer<typeof CreateIcpProfileRequestSchema>;
 export type UpdateIcpProfileRequest = z.infer<typeof UpdateIcpProfileRequestSchema>;
@@ -240,6 +281,9 @@ export type UpdateQualificationRuleRequest = z.infer<
   typeof UpdateQualificationRuleRequestSchema
 >;
 export type QualificationRuleResponse = z.infer<typeof QualificationRuleResponseSchema>;
+export type ListIcpRulesResponse = z.infer<typeof ListIcpRulesResponseSchema>;
+export type ReplaceQualificationRuleInput = z.infer<typeof ReplaceQualificationRuleInputSchema>;
+export type ReplaceIcpRulesRequest = z.infer<typeof ReplaceIcpRulesRequestSchema>;
 export type IcpStatusResponse = z.infer<typeof IcpStatusResponseSchema>;
 export type IcpDebugSampleQuery = z.infer<typeof IcpDebugSampleQuerySchema>;
 export type IcpDebugSampleResponse = z.infer<typeof IcpDebugSampleResponseSchema>;

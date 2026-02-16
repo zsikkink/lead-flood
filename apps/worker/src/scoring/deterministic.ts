@@ -15,11 +15,13 @@ export interface DeterministicRule {
   id: string;
   name: string;
   ruleType: 'WEIGHTED' | 'HARD_FILTER';
+  isRequired?: boolean;
   fieldKey: string;
   operator: 'EQ' | 'NEQ' | 'GT' | 'GTE' | 'LT' | 'LTE' | 'IN' | 'NOT_IN' | 'CONTAINS';
   valueJson: unknown;
   weight: number | null;
   isActive: boolean;
+  orderIndex?: number;
   priority: number;
 }
 
@@ -104,6 +106,10 @@ function sanitizeFieldKey(fieldKey: string): string {
     .replace(/[^A-Za-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .toUpperCase();
+}
+
+function isCountryHardFilterField(fieldKey: string): boolean {
+  return fieldKey.trim().toLowerCase() === 'country';
 }
 
 export function evaluateRuleMatch(rule: DeterministicRule, featureValue: unknown): boolean {
@@ -193,38 +199,57 @@ export function evaluateDeterministicScore(
   const activeRules = rules
     .filter((rule) => rule.isActive)
     .sort((a, b) => {
-      if (a.priority === b.priority) {
+      const orderA = a.orderIndex ?? a.priority;
+      const orderB = b.orderIndex ?? b.priority;
+      if (orderA === orderB) {
         return a.id.localeCompare(b.id);
       }
-      return a.priority - b.priority;
+      return orderA - orderB;
     });
 
   const reasonCodes: string[] = [];
   const ruleEvaluation: RuleEvaluationResult[] = [];
   let hardFilterPassed = true;
-  let weightedMatched = 0;
-  let weightedTotal = 0;
+  let weightedPositiveMatched = 0;
+  let weightedPositiveTotal = 0;
+  let weightedNegativeMatched = 0;
+  let weightedNegativeTotal = 0;
   let ruleMatchCount = 0;
 
   for (const rule of activeRules) {
     const featureValue = getFeatureValue(features, rule.fieldKey);
     const matched = evaluateRuleMatch(rule, featureValue);
-    const weightApplied = rule.ruleType === 'WEIGHTED' ? Math.max(0, rule.weight ?? 0) : 0;
+    const effectiveRuleType: DeterministicRule['ruleType'] =
+      (rule.ruleType === 'HARD_FILTER' || rule.isRequired === true) && isCountryHardFilterField(rule.fieldKey)
+        ? 'HARD_FILTER'
+        : 'WEIGHTED';
+    const weightApplied =
+      effectiveRuleType === 'WEIGHTED'
+        ? (rule.weight ?? 1)
+        : 0;
     const contribution = matched ? weightApplied : 0;
 
     if (matched) {
       ruleMatchCount += 1;
     }
 
-    if (rule.ruleType === 'HARD_FILTER' && !matched) {
+    if (effectiveRuleType === 'HARD_FILTER' && !matched) {
       hardFilterPassed = false;
       reasonCodes.push(`HARD_FILTER_FAILED_${sanitizeFieldKey(rule.fieldKey)}`);
     }
 
-    if (rule.ruleType === 'WEIGHTED') {
-      weightedTotal += weightApplied;
-      if (matched) {
-        weightedMatched += weightApplied;
+    if (effectiveRuleType === 'WEIGHTED') {
+      if (weightApplied >= 0) {
+        weightedPositiveTotal += weightApplied;
+        if (matched) {
+          weightedPositiveMatched += weightApplied;
+        }
+      } else {
+        const penalty = Math.abs(weightApplied);
+        weightedNegativeTotal += penalty;
+        if (matched) {
+          weightedNegativeMatched += penalty;
+        }
       }
     }
 
@@ -232,7 +257,7 @@ export function evaluateDeterministicScore(
       ruleId: rule.id,
       fieldKey: rule.fieldKey,
       operator: rule.operator,
-      ruleType: rule.ruleType,
+      ruleType: effectiveRuleType,
       matched,
       weightApplied,
       contribution,
@@ -242,8 +267,17 @@ export function evaluateDeterministicScore(
 
   let qualificationScore = 0;
   if (hardFilterPassed) {
-    if (weightedTotal > 0) {
-      qualificationScore = weightedMatched / weightedTotal;
+    if (weightedPositiveTotal > 0 || weightedNegativeTotal > 0) {
+      const baseScore =
+        weightedPositiveTotal > 0
+          ? (weightedPositiveMatched + 1) / (weightedPositiveTotal + 1)
+          : 1;
+      const penaltyFactor =
+        weightedNegativeTotal > 0
+          ? 1 - (weightedNegativeMatched / weightedNegativeTotal) * 0.8
+          : 1;
+      const boundedPenaltyFactor = Math.max(0.2, Math.min(1, penaltyFactor));
+      qualificationScore = baseScore * boundedPenaltyFactor;
     } else {
       qualificationScore = 1;
       reasonCodes.push(DETERMINISTIC_REASON_CODES.noWeightedRules);
