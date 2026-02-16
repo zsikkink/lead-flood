@@ -19,6 +19,7 @@
     "db:migrate": "pnpm --filter @lead-flood/db prisma:migrate",
     "db:migrate:dev": "pnpm --filter @lead-flood/db prisma:migrate:dev",
     "db:seed": "pnpm --filter @lead-flood/db prisma:seed",
+    "icp:seed": "pnpm --filter @lead-flood/worker exec tsx ../../scripts/icp/seed-zbooni-icps.ts",
     "db:studio": "pnpm --filter @lead-flood/db prisma:studio",
     "learning:backfill-features": "pnpm --filter @lead-flood/worker exec tsx ../../scripts/learning/backfill-features.ts",
     "dev:infra": "docker compose -f infra/docker/docker-compose.local.yml up -d",
