@@ -16,7 +16,7 @@ import {
   TrainingRunResponseSchema,
 } from '@lead-flood/contracts';
 
-import { LearningNotImplementedError } from './learning.errors.js';
+import { LearningNotFoundError, LearningNotImplementedError } from './learning.errors.js';
 import { PrismaLearningRepository } from './learning.repository.js';
 import { buildLearningService } from './learning.service.js';
 
@@ -29,6 +29,16 @@ function sendValidationError(reply: FastifyReply, requestId: string, message: st
 }
 
 function handleModuleError(error: unknown, request: FastifyRequest, reply: FastifyReply): boolean {
+  if (error instanceof LearningNotFoundError) {
+    reply.status(404).send(
+      ErrorResponseSchema.parse({
+        error: error.message,
+        requestId: request.id,
+      }),
+    );
+    return true;
+  }
+
   if (error instanceof LearningNotImplementedError) {
     reply.status(501).send(
       ErrorResponseSchema.parse({

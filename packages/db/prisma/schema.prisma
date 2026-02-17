@@ -115,6 +115,7 @@ enum ScoreBand {
 
 enum MessageChannel {
   EMAIL
+  WHATSAPP
 }
 
 enum MessageApprovalStatus {
@@ -135,6 +136,7 @@ enum MessageSendStatus {
 
 enum SendProvider {
   RESEND
+  TRENGO
 }
 
 enum FeedbackEventType {
@@ -150,6 +152,12 @@ enum FeedbackSource {
   WEBHOOK
   MANUAL
   CRM_IMPORT
+}
+
+enum LabelSource {
+  FEEDBACK_EVENT
+  COLD_LEAD_TIMEOUT
+  MANUAL
 }
 
 model User {
@@ -199,6 +207,7 @@ model Lead {
   messageDrafts    MessageDraft[]
   messageSends     MessageSend[]
   feedbackEvents   FeedbackEvent[]
+  trainingLabels   TrainingLabel[]
 
   @@index([status])
   @@index([source])
@@ -570,7 +579,24 @@ model FeedbackEvent {
   occurredAt      DateTime
   createdAt       DateTime          @default(now())
 
+  trainingLabels  TrainingLabel[]
+
   @@index([leadId, occurredAt])
   @@index([messageSendId])
   @@index([eventType])
+}
+
+model TrainingLabel {
+  id              String         @id @default(cuid())
+  leadId          String
+  lead            Lead           @relation(fields: [leadId], references: [id])
+  feedbackEventId String?
+  feedbackEvent   FeedbackEvent? @relation(fields: [feedbackEventId], references: [id])
+  label           Int
+  source          LabelSource
+  createdAt       DateTime       @default(now())
+
+  @@unique([leadId, feedbackEventId])
+  @@index([createdAt])
+  @@index([label])
 }

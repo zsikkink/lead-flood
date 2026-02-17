@@ -18,7 +18,14 @@ import {
 
 import { MessagingNotImplementedError } from './messaging.errors.js';
 import { PrismaMessagingRepository } from './messaging.repository.js';
-import { buildMessagingService } from './messaging.service.js';
+import {
+  buildMessagingService,
+  type MessagingSendJobPayload,
+} from './messaging.service.js';
+
+export interface MessagingRouteDependencies {
+  enqueueMessageSend?: ((payload: MessagingSendJobPayload) => Promise<void>) | undefined;
+}
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
   reply.status(400);
@@ -42,9 +49,18 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
   return false;
 }
 
-export function registerMessagingRoutes(app: FastifyInstance): void {
+export function registerMessagingRoutes(
+  app: FastifyInstance,
+  dependencies?: MessagingRouteDependencies,
+): void {
   const repository = new PrismaMessagingRepository();
-  const service = buildMessagingService(repository);
+  const service = buildMessagingService(repository, {
+    enqueueMessageSend: dependencies?.enqueueMessageSend
+      ? dependencies.enqueueMessageSend
+      : async () => {
+          throw new MessagingNotImplementedError('Messaging queue publisher is not configured');
+        },
+  });
 
   app.post('/v1/messaging/drafts/generate', async (request, reply) => {
     const parsed = GenerateMessageDraftRequestSchema.safeParse(request.body);

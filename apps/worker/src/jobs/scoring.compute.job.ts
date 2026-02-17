@@ -1,6 +1,7 @@
 import type { CreateScoringRunRequest } from '@lead-flood/contracts';
 import { createHash } from 'node:crypto';
 import { Prisma, prisma } from '@lead-flood/db';
+import type { OpenAiAdapter } from '@lead-flood/providers';
 import type { Job, SendOptions } from 'pg-boss';
 
 import {
@@ -8,6 +9,7 @@ import {
   toScoreBand,
   type DeterministicRule,
 } from '../scoring/deterministic.js';
+import { predictLogistic, type LogisticModel } from '../scoring/logistic.js';
 
 export const SCORING_COMPUTE_JOB_NAME = 'scoring.compute';
 export const SCORING_COMPUTE_IDEMPOTENCY_KEY_PATTERN = 'scoring.compute:${runId}';
@@ -32,6 +34,12 @@ export interface ScoringComputeLogger {
   info: (object: Record<string, unknown>, message: string) => void;
   warn: (object: Record<string, unknown>, message: string) => void;
   error: (object: Record<string, unknown>, message: string) => void;
+}
+
+export interface ScoringComputeJobDependencies {
+  openAiAdapter?: OpenAiAdapter;
+  deterministicWeight?: number;
+  aiWeight?: number;
 }
 
 const BASELINE_TRAINING_RUN_TRIGGER = 'MANUAL';
@@ -172,9 +180,99 @@ async function ensureBaselineModelVersion(): Promise<string> {
   }
 }
 
+/** Feature keys used by the trained logistic model (must match model.train NUMERIC_FEATURE_KEYS). */
+const TRAINED_MODEL_FEATURE_KEYS = [
+  'has_email',
+  'has_domain',
+  'has_company_name',
+  'industry_supported',
+  'has_whatsapp',
+  'has_instagram',
+  'accepts_online_payments',
+  'review_count',
+  'follower_count',
+  'physical_address_present',
+  'physical_store_present',
+  'recent_activity',
+  'custom_order_signals',
+  'pure_self_serve_ecom',
+  'shopify_detected',
+  'abandonment_signal_detected',
+  'multi_staff_detected',
+  'follower_growth_signal',
+  'high_engagement_signal',
+  'has_booking_or_contact_form',
+  'variable_pricing_detected',
+  'industry_match',
+  'geo_match',
+  'enrichment_success_rate',
+  'discovery_attempt_count',
+  'enrichment_attempt_count',
+  'days_since_discovery',
+  'rule_match_count',
+  'hard_filter_passed',
+] as const;
+
+function extractFeatureVectorForModel(featuresJson: Record<string, unknown>): number[] {
+  const vector: number[] = [];
+  for (const key of TRAINED_MODEL_FEATURE_KEYS) {
+    const raw = featuresJson[key];
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      vector.push(raw);
+    } else if (typeof raw === 'boolean') {
+      vector.push(raw ? 1 : 0);
+    } else if (typeof raw === 'string') {
+      const parsed = Number(raw);
+      vector.push(Number.isFinite(parsed) ? parsed : 0);
+    } else {
+      vector.push(0);
+    }
+  }
+  return vector;
+}
+
+function parseTrainedModel(coefficientsJson: unknown): LogisticModel | null {
+  if (!coefficientsJson || typeof coefficientsJson !== 'object') return null;
+  const payload = coefficientsJson as Record<string, unknown>;
+  const values = payload['values'];
+  const intercept = payload['intercept'];
+  const featureStats = payload['featureStats'];
+  if (!Array.isArray(values) || typeof intercept !== 'number' || !Array.isArray(featureStats)) {
+    return null;
+  }
+  return {
+    coefficients: values as number[],
+    intercept,
+    featureStats: featureStats as { mean: number; std: number }[],
+  };
+}
+
+async function findActiveTrainedModel(): Promise<{ id: string; model: LogisticModel } | null> {
+  const active = await prisma.modelVersion.findFirst({
+    where: {
+      stage: 'ACTIVE',
+      modelType: 'LOGISTIC_REGRESSION',
+      // Exclude the baseline version — it has no real coefficients
+      versionTag: { not: BASELINE_MODEL_VERSION_TAG },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, coefficientsJson: true },
+  });
+  if (!active) return null;
+
+  const model = parseTrainedModel(active.coefficientsJson);
+  if (!model) return null;
+
+  return { id: active.id, model };
+}
+
+const DEFAULT_DETERMINISTIC_WEIGHT = 0.6;
+const DEFAULT_AI_WEIGHT = 0.4;
+
 export async function handleScoringComputeJob(
   logger: ScoringComputeLogger,
   job: Job<ScoringComputeJobPayload>,
+  deps?: ScoringComputeJobDependencies,
 ): Promise<void> {
   const { runId, correlationId, modelVersionId, icpProfileId } = job.data;
   const effectiveCorrelationId = correlationId ?? job.id;
@@ -245,6 +343,9 @@ export async function handleScoringComputeJob(
       rulesByIcp.set(icpId, asDeterministicRules(rules));
     }
 
+    // Look up a trained logistic model (not the baseline stub)
+    const trainedModel = await findActiveTrainedModel();
+
     let persistedPredictions = 0;
     for (const targetLeadId of targetLeadIds) {
       for (const targetIcpId of targetIcpIds) {
@@ -267,8 +368,52 @@ export async function handleScoringComputeJob(
         const rules = rulesByIcp.get(targetIcpId) ?? [];
         const deterministic = evaluateDeterministicScore(rules, featurePayload);
         const deterministicScore = deterministic.qualificationScore;
-        const logisticScore = 0;
-        const blendedScore = deterministicScore;
+
+        let logisticScore = 0;
+        let aiReasoning: string[] = [];
+        let usedTrainedModel = false;
+
+        // Prefer trained logistic model over OpenAI when available
+        if (trainedModel) {
+          const featureVector = extractFeatureVectorForModel(featurePayload);
+          logisticScore = predictLogistic(featureVector, trainedModel.model);
+          usedTrainedModel = true;
+        } else if (deps?.openAiAdapter?.isConfigured) {
+          // Fall back to OpenAI AI scoring when no trained model
+          try {
+            const icpProfile = await prisma.icpProfile.findUnique({
+              where: { id: targetIcpId },
+              select: { description: true },
+            });
+
+            const aiResult = await deps.openAiAdapter.evaluateLeadScore({
+              featuresJson: featurePayload,
+              icpDescription: icpProfile?.description ?? 'No ICP description available',
+              deterministicScore,
+            });
+
+            if (aiResult.status === 'success') {
+              logisticScore = aiResult.data.score;
+              aiReasoning = aiResult.data.reasoning;
+            } else {
+              logger.warn(
+                { jobId: job.id, leadId: targetLeadId, icpId: targetIcpId, status: aiResult.status },
+                'AI scoring failed, using deterministic-only',
+              );
+            }
+          } catch (error: unknown) {
+            logger.warn(
+              { jobId: job.id, leadId: targetLeadId, icpId: targetIcpId, error },
+              'AI scoring error, using deterministic-only',
+            );
+          }
+        }
+
+        const dWeight = deps?.deterministicWeight ?? DEFAULT_DETERMINISTIC_WEIGHT;
+        const aWeight = deps?.aiWeight ?? DEFAULT_AI_WEIGHT;
+        const blendedScore = logisticScore > 0
+          ? dWeight * deterministicScore + aWeight * logisticScore
+          : deterministicScore;
         const scoreBand = toScoreBand(blendedScore);
 
         await prisma.leadScorePrediction.upsert({
@@ -292,6 +437,8 @@ export async function handleScoringComputeJob(
             reasonsJson: toInputJson({
               reasonCodes: deterministic.reasonCodes,
               hardFilterPassed: deterministic.hardFilterPassed,
+              aiReasoning: aiReasoning.length > 0 ? aiReasoning : undefined,
+              usedTrainedModel,
             }),
             ruleEvaluationJson: toInputJson(deterministic.ruleEvaluation),
             predictedAt: new Date(),
@@ -304,6 +451,8 @@ export async function handleScoringComputeJob(
             reasonsJson: toInputJson({
               reasonCodes: deterministic.reasonCodes,
               hardFilterPassed: deterministic.hardFilterPassed,
+              aiReasoning: aiReasoning.length > 0 ? aiReasoning : undefined,
+              usedTrainedModel,
             }),
             ruleEvaluationJson: toInputJson(deterministic.ruleEvaluation),
             predictedAt: new Date(),

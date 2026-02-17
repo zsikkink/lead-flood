@@ -6,6 +6,9 @@ import { createLogger } from '@lead-flood/observability';
 import { buildAuthenticateUser } from './auth/service.js';
 import { loadApiEnv } from './env.js';
 import type { DiscoveryRunJobPayload } from './modules/discovery/discovery.service.js';
+import type { EnrichmentRunJobPayload } from './modules/enrichment/enrichment.service.js';
+import type { MessagingSendJobPayload } from './modules/messaging/messaging.service.js';
+import type { ScoringRunJobPayload } from './modules/scoring/scoring.service.js';
 import { buildServer, LeadAlreadyExistsError } from './server.js';
 
 function toDayStart(value: string): Date {
@@ -28,6 +31,9 @@ async function main(): Promise<void> {
   await boss.start();
   await boss.createQueue('lead.enrich.stub');
   await boss.createQueue('discovery.run');
+  await boss.createQueue('enrichment.run');
+  await boss.createQueue('scoring.compute');
+  await boss.createQueue('message.send');
 
   const server = buildServer({
     env,
@@ -171,6 +177,30 @@ async function main(): Promise<void> {
         singletonKey: `discovery.run:${payload.runId}`,
         retryLimit: 3,
         retryDelay: 30,
+        retryBackoff: true,
+      });
+    },
+    enqueueEnrichmentRun: async (payload: EnrichmentRunJobPayload) => {
+      await boss.send('enrichment.run', payload, {
+        singletonKey: `enrichment.run:${payload.runId}`,
+        retryLimit: 5,
+        retryDelay: 60,
+        retryBackoff: true,
+      });
+    },
+    enqueueScoringRun: async (payload: ScoringRunJobPayload) => {
+      await boss.send('scoring.compute', payload, {
+        singletonKey: `scoring.compute:${payload.runId}`,
+        retryLimit: 3,
+        retryDelay: 30,
+        retryBackoff: true,
+      });
+    },
+    enqueueMessageSend: async (payload: MessagingSendJobPayload) => {
+      await boss.send('message.send', payload, {
+        singletonKey: `message.send:${payload.sendId}`,
+        retryLimit: 5,
+        retryDelay: 90,
         retryBackoff: true,
       });
     },

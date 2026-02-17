@@ -73,6 +73,7 @@ function mapJobStatusToPipelineStatus(
 
 export interface ScoringRepository {
   createScoringRun(input: CreateScoringRunRequest): Promise<CreateScoringRunResponse>;
+  markScoringRunFailed(runId: string, errorMessage: string): Promise<void>;
   getScoringRunStatus(runId: string): Promise<ScoringRunStatusResponse>;
   listScorePredictions(query: ListScorePredictionsQuery): Promise<ListScorePredictionsResponse>;
   getLatestLeadScore(leadId: string, query: LatestLeadScoreQuery): Promise<LatestLeadScoreResponse>;
@@ -89,6 +90,10 @@ export interface ScoringRepository {
 export class StubScoringRepository implements ScoringRepository {
   async createScoringRun(_input: CreateScoringRunRequest): Promise<CreateScoringRunResponse> {
     throw new ScoringNotImplementedError('TODO: create scoring run persistence');
+  }
+
+  async markScoringRunFailed(_runId: string, _errorMessage: string): Promise<void> {
+    throw new ScoringNotImplementedError('TODO: mark scoring run failed persistence');
   }
 
   async getScoringRunStatus(_runId: string): Promise<ScoringRunStatusResponse> {
@@ -118,8 +123,8 @@ export class StubScoringRepository implements ScoringRepository {
   }
 }
 
-export class PrismaScoringRepository implements ScoringRepository {
-  async createScoringRun(input: CreateScoringRunRequest): Promise<CreateScoringRunResponse> {
+export class PrismaScoringRepository extends StubScoringRepository {
+  override async createScoringRun(input: CreateScoringRunRequest): Promise<CreateScoringRunResponse> {
     const runId = randomUUID();
 
     await prisma.jobExecution.create({
@@ -141,7 +146,18 @@ export class PrismaScoringRepository implements ScoringRepository {
     return { runId, status: 'QUEUED' };
   }
 
-  async getScoringRunStatus(runId: string): Promise<ScoringRunStatusResponse> {
+  override async markScoringRunFailed(runId: string, errorMessage: string): Promise<void> {
+    await prisma.jobExecution.update({
+      where: { id: runId },
+      data: {
+        status: 'failed',
+        error: errorMessage,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  override async getScoringRunStatus(runId: string): Promise<ScoringRunStatusResponse> {
     const run = await prisma.jobExecution.findFirst({
       where: {
         id: runId,
@@ -171,7 +187,7 @@ export class PrismaScoringRepository implements ScoringRepository {
     };
   }
 
-  async listScorePredictions(query: ListScorePredictionsQuery): Promise<ListScorePredictionsResponse> {
+  override async listScorePredictions(query: ListScorePredictionsQuery): Promise<ListScorePredictionsResponse> {
     const where = {
       ...(query.leadId ? { leadId: query.leadId } : {}),
       ...(query.icpProfileId ? { icpProfileId: query.icpProfileId } : {}),
@@ -226,7 +242,7 @@ export class PrismaScoringRepository implements ScoringRepository {
     };
   }
 
-  async getLatestLeadScore(leadId: string, query: LatestLeadScoreQuery): Promise<LatestLeadScoreResponse> {
+  override async getLatestLeadScore(leadId: string, query: LatestLeadScoreQuery): Promise<LatestLeadScoreResponse> {
     const prediction = await prisma.leadScorePrediction.findFirst({
       where: {
         leadId,
@@ -256,7 +272,7 @@ export class PrismaScoringRepository implements ScoringRepository {
     };
   }
 
-  async getLatestLeadFeatureSnapshot(
+  override async getLatestLeadFeatureSnapshot(
     leadId: string,
     query: LatestLeadScoreQuery,
   ): Promise<LatestLeadFeatureSnapshotResponse> {
@@ -291,7 +307,7 @@ export class PrismaScoringRepository implements ScoringRepository {
     };
   }
 
-  async getLatestLeadDeterministicScore(
+  override async getLatestLeadDeterministicScore(
     leadId: string,
     query: LatestLeadScoreQuery,
   ): Promise<LatestLeadDeterministicScoreResponse> {

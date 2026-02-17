@@ -10,6 +10,9 @@ import {
   HunterAdapter,
   PdlEnrichmentAdapter,
   PublicWebLookupAdapter,
+  OpenAiAdapter,
+  ResendAdapter,
+  TrengoAdapter,
 } from '@lead-flood/providers';
 
 import { loadWorkerEnv } from './env.js';
@@ -159,6 +162,24 @@ async function main(): Promise<void> {
     baseUrl: env.PUBLIC_LOOKUP_BASE_URL,
   });
 
+  const openAiAdapter = new OpenAiAdapter({
+    apiKey: env.OPENAI_API_KEY,
+    generationModel: env.OPENAI_GENERATION_MODEL,
+    scoringModel: env.OPENAI_SCORING_MODEL,
+    baseUrl: env.OPENAI_BASE_URL,
+  });
+
+  const resendAdapter = new ResendAdapter({
+    apiKey: env.RESEND_API_KEY,
+    fromEmail: env.RESEND_FROM_EMAIL,
+  });
+
+  const trengoAdapter = new TrengoAdapter({
+    apiKey: env.TRENGO_API_KEY,
+    baseUrl: env.TRENGO_BASE_URL,
+    channelId: env.TRENGO_CHANNEL_ID,
+  });
+
   let outboxDispatchRunning = false;
   const runOutboxDispatch = async (): Promise<void> => {
     if (outboxDispatchRunning) {
@@ -238,28 +259,50 @@ async function main(): Promise<void> {
     boss,
     logger,
     LABELS_GENERATE_JOB_NAME,
-    handleLabelsGenerateJob,
+    (jobLogger, job) => handleLabelsGenerateJob(jobLogger, job),
   );
   await registerWorker<ScoringComputeJobPayload>(
     boss,
     logger,
     SCORING_COMPUTE_JOB_NAME,
-    handleScoringComputeJob,
+    (jobLogger, job) =>
+      handleScoringComputeJob(jobLogger, job, {
+        openAiAdapter,
+        deterministicWeight: env.SCORING_DETERMINISTIC_WEIGHT,
+        aiWeight: env.SCORING_AI_WEIGHT,
+      }),
   );
-  await registerWorker<ModelTrainJobPayload>(boss, logger, MODEL_TRAIN_JOB_NAME, handleModelTrainJob);
+  await registerWorker<ModelTrainJobPayload>(
+    boss,
+    logger,
+    MODEL_TRAIN_JOB_NAME,
+    (jobLogger, job) => handleModelTrainJob(jobLogger, job, { boss }),
+  );
   await registerWorker<ModelEvaluateJobPayload>(
     boss,
     logger,
     MODEL_EVALUATE_JOB_NAME,
-    handleModelEvaluateJob,
+    (jobLogger, job) => handleModelEvaluateJob(jobLogger, job, { boss }),
   );
   await registerWorker<MessageGenerateJobPayload>(
     boss,
     logger,
     MESSAGE_GENERATE_JOB_NAME,
-    handleMessageGenerateJob,
+    (jobLogger, job) =>
+      handleMessageGenerateJob(jobLogger, job, {
+        openAiAdapter,
+      }),
   );
-  await registerWorker<MessageSendJobPayload>(boss, logger, MESSAGE_SEND_JOB_NAME, handleMessageSendJob);
+  await registerWorker<MessageSendJobPayload>(
+    boss,
+    logger,
+    MESSAGE_SEND_JOB_NAME,
+    (jobLogger, job) =>
+      handleMessageSendJob(jobLogger, job, {
+        resendAdapter,
+        trengoAdapter,
+      }),
+  );
   await registerWorker<AnalyticsRollupJobPayload>(
     boss,
     logger,

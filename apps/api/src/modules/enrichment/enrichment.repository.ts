@@ -74,6 +74,7 @@ function toDayStart(value: string): Date {
 
 export interface EnrichmentRepository {
   createEnrichmentRun(input: CreateEnrichmentRunRequest): Promise<CreateEnrichmentRunResponse>;
+  markEnrichmentRunFailed(runId: string, errorMessage: string): Promise<void>;
   getEnrichmentRunStatus(runId: string): Promise<EnrichmentRunStatusResponse>;
   listEnrichmentRecords(query: ListEnrichmentRecordsQuery): Promise<ListEnrichmentRecordsResponse>;
 }
@@ -81,6 +82,10 @@ export interface EnrichmentRepository {
 export class StubEnrichmentRepository implements EnrichmentRepository {
   async createEnrichmentRun(_input: CreateEnrichmentRunRequest): Promise<CreateEnrichmentRunResponse> {
     throw new EnrichmentNotImplementedError('TODO: create enrichment run persistence');
+  }
+
+  async markEnrichmentRunFailed(_runId: string, _errorMessage: string): Promise<void> {
+    throw new EnrichmentNotImplementedError('TODO: mark enrichment run failed persistence');
   }
 
   async getEnrichmentRunStatus(_runId: string): Promise<EnrichmentRunStatusResponse> {
@@ -92,8 +97,8 @@ export class StubEnrichmentRepository implements EnrichmentRepository {
   }
 }
 
-export class PrismaEnrichmentRepository implements EnrichmentRepository {
-  async createEnrichmentRun(input: CreateEnrichmentRunRequest): Promise<CreateEnrichmentRunResponse> {
+export class PrismaEnrichmentRepository extends StubEnrichmentRepository {
+  override async createEnrichmentRun(input: CreateEnrichmentRunRequest): Promise<CreateEnrichmentRunResponse> {
     const runId = randomUUID();
 
     await prisma.jobExecution.create({
@@ -115,7 +120,18 @@ export class PrismaEnrichmentRepository implements EnrichmentRepository {
     return { runId, status: 'QUEUED' };
   }
 
-  async getEnrichmentRunStatus(runId: string): Promise<EnrichmentRunStatusResponse> {
+  override async markEnrichmentRunFailed(runId: string, errorMessage: string): Promise<void> {
+    await prisma.jobExecution.update({
+      where: { id: runId },
+      data: {
+        status: 'failed',
+        error: errorMessage,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  override async getEnrichmentRunStatus(runId: string): Promise<EnrichmentRunStatusResponse> {
     const run = await prisma.jobExecution.findFirst({
       where: {
         id: runId,
@@ -145,7 +161,7 @@ export class PrismaEnrichmentRepository implements EnrichmentRepository {
     };
   }
 
-  async listEnrichmentRecords(query: ListEnrichmentRecordsQuery): Promise<ListEnrichmentRecordsResponse> {
+  override async listEnrichmentRecords(query: ListEnrichmentRecordsQuery): Promise<ListEnrichmentRecordsResponse> {
     const where = {
       ...(query.leadId ? { leadId: query.leadId } : {}),
       ...(query.provider ? { provider: query.provider } : {}),

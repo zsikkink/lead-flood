@@ -71,7 +71,7 @@ type PrismaMessageVariant = {
   id: string;
   messageDraftId: string;
   variantKey: string;
-  channel: 'EMAIL';
+  channel: 'EMAIL' | 'WHATSAPP';
   subject: string | null;
   bodyText: string;
   bodyHtml: string | null;
@@ -105,8 +105,8 @@ type PrismaMessageSend = {
   leadId: string;
   messageDraftId: string;
   messageVariantId: string;
-  channel: 'EMAIL';
-  provider: 'RESEND';
+  channel: 'EMAIL' | 'WHATSAPP';
+  provider: 'RESEND' | 'TRENGO';
   providerMessageId: string | null;
   status: 'QUEUED' | 'SENT' | 'DELIVERED' | 'REPLIED' | 'BOUNCED' | 'FAILED';
   idempotencyKey: string;

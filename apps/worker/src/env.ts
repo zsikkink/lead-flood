@@ -63,6 +63,18 @@ const WorkerEnvSchema = z.object({
     .default('HUNTER'),
   DISCOVERY_ENABLED: envBoolean.default(true),
   ENRICHMENT_ENABLED: envBoolean.default(true),
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_BASE_URL: z.string().url().optional(),
+  OPENAI_GENERATION_MODEL: z.string().min(1).default('gpt-4o'),
+  OPENAI_SCORING_MODEL: z.string().min(1).default('gpt-4o'),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_FROM_EMAIL: z.string().email().default('noreply@leadflood.io'),
+  TRENGO_API_KEY: z.string().min(1).optional(),
+  TRENGO_BASE_URL: z.string().url().default('https://app.trengo.com/api/v2'),
+  TRENGO_CHANNEL_ID: z.string().min(1).optional(),
+  MESSAGING_ENABLED: envBoolean.default(true),
+  SCORING_DETERMINISTIC_WEIGHT: z.coerce.number().min(0).max(1).default(0.6),
+  SCORING_AI_WEIGHT: z.coerce.number().min(0).max(1).default(0.4),
 });
 
 export type WorkerEnv = z.infer<typeof WorkerEnvSchema>;
