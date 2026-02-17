@@ -13,7 +13,7 @@ import {
 } from '@lead-flood/contracts';
 
 import { AnalyticsNotImplementedError } from './analytics.errors.js';
-import { StubAnalyticsRepository } from './analytics.repository.js';
+import { PrismaAnalyticsRepository } from './analytics.repository.js';
 import { buildAnalyticsService } from './analytics.service.js';
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
@@ -39,7 +39,7 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
 }
 
 export function registerAnalyticsRoutes(app: FastifyInstance): void {
-  const repository = new StubAnalyticsRepository();
+  const repository = new PrismaAnalyticsRepository();
   const service = buildAnalyticsService(repository);
 
   app.get('/v1/analytics/funnel', async (request, reply) => {

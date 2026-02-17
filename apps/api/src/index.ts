@@ -32,6 +32,7 @@ async function main(): Promise<void> {
   const server = buildServer({
     env,
     logger,
+    accessTokenSecret: env.JWT_ACCESS_SECRET,
     checkDatabaseHealth: async () => {
       try {
         await prisma.$queryRaw`SELECT 1`;

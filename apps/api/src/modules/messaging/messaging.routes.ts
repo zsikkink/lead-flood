@@ -17,7 +17,7 @@ import {
 } from '@lead-flood/contracts';
 
 import { MessagingNotImplementedError } from './messaging.errors.js';
-import { StubMessagingRepository } from './messaging.repository.js';
+import { PrismaMessagingRepository } from './messaging.repository.js';
 import { buildMessagingService } from './messaging.service.js';
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
@@ -43,7 +43,7 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
 }
 
 export function registerMessagingRoutes(app: FastifyInstance): void {
-  const repository = new StubMessagingRepository();
+  const repository = new PrismaMessagingRepository();
   const service = buildMessagingService(repository);
 
   app.post('/v1/messaging/drafts/generate', async (request, reply) => {

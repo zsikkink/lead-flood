@@ -113,6 +113,45 @@ enum ScoreBand {
   HIGH
 }
 
+enum MessageChannel {
+  EMAIL
+}
+
+enum MessageApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  AUTO_APPROVED
+}
+
+enum MessageSendStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  REPLIED
+  BOUNCED
+  FAILED
+}
+
+enum SendProvider {
+  RESEND
+}
+
+enum FeedbackEventType {
+  REPLIED
+  MEETING_BOOKED
+  DEAL_WON
+  DEAL_LOST
+  UNSUBSCRIBED
+  BOUNCED
+}
+
+enum FeedbackSource {
+  WEBHOOK
+  MANUAL
+  CRM_IMPORT
+}
+
 model User {
   id          String    @id @default(cuid())
   email       String    @unique
@@ -157,6 +196,9 @@ model Lead {
   enrichmentRecords LeadEnrichmentRecord[]
   featureSnapshots LeadFeatureSnapshot[]
   scorePredictions LeadScorePrediction[]
+  messageDrafts    MessageDraft[]
+  messageSends     MessageSend[]
+  feedbackEvents   FeedbackEvent[]
 
   @@index([status])
   @@index([source])
@@ -218,6 +260,7 @@ model IcpProfile {
   featureSnapshots     LeadFeatureSnapshot[]
   scorePredictions     LeadScorePrediction[]
   analyticsDailyRollups AnalyticsDailyRollup[]
+  messageDrafts        MessageDraft[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
@@ -412,6 +455,8 @@ model LeadScorePrediction {
   predictedAt       DateTime           @default(now())
   createdAt         DateTime           @default(now())
 
+  messageDrafts     MessageDraft[]
+
   @@unique([leadId, icpProfileId, featureSnapshotId, modelVersionId])
   @@index([leadId, predictedAt])
   @@index([icpProfileId, predictedAt])
@@ -436,4 +481,96 @@ model AnalyticsDailyRollup {
   @@unique([day, icpProfileId])
   @@index([day])
   @@index([icpProfileId, day])
+}
+
+model MessageDraft {
+  id                   String                @id @default(cuid())
+  leadId               String
+  lead                 Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  icpProfileId         String
+  icpProfile           IcpProfile            @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
+  scorePredictionId    String?
+  scorePrediction      LeadScorePrediction?  @relation(fields: [scorePredictionId], references: [id], onDelete: SetNull)
+  promptVersion        String
+  generatedByModel     String
+  groundingKnowledgeIds String[]             @default([])
+  groundingContextJson Json?
+  approvalStatus       MessageApprovalStatus @default(PENDING)
+  approvedByUserId     String?
+  approvedAt           DateTime?
+  rejectedReason       String?
+  variants             MessageVariant[]
+  messageSends         MessageSend[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([leadId, createdAt])
+  @@index([icpProfileId, createdAt])
+  @@index([approvalStatus])
+}
+
+model MessageVariant {
+  id             String         @id @default(cuid())
+  messageDraftId String
+  messageDraft   MessageDraft   @relation(fields: [messageDraftId], references: [id], onDelete: Cascade)
+  variantKey     String
+  channel        MessageChannel @default(EMAIL)
+  subject        String?
+  bodyText       String
+  bodyHtml       String?
+  ctaText        String?
+  qualityScore   Float?
+  isSelected     Boolean        @default(false)
+  messageSends   MessageSend[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([messageDraftId])
+}
+
+model MessageSend {
+  id                String            @id @default(cuid())
+  leadId            String
+  lead              Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messageDraftId    String
+  messageDraft      MessageDraft      @relation(fields: [messageDraftId], references: [id], onDelete: Cascade)
+  messageVariantId  String
+  messageVariant    MessageVariant    @relation(fields: [messageVariantId], references: [id], onDelete: Cascade)
+  channel           MessageChannel    @default(EMAIL)
+  provider          SendProvider      @default(RESEND)
+  providerMessageId String?
+  status            MessageSendStatus @default(QUEUED)
+  idempotencyKey    String            @unique
+  scheduledAt       DateTime?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  repliedAt         DateTime?
+  failureCode       String?
+  failureReason     String?
+  feedbackEvents    FeedbackEvent[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([leadId, createdAt])
+  @@index([status])
+  @@index([messageDraftId])
+}
+
+model FeedbackEvent {
+  id              String            @id @default(cuid())
+  leadId          String
+  lead            Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messageSendId   String?
+  messageSend     MessageSend?      @relation(fields: [messageSendId], references: [id], onDelete: SetNull)
+  eventType       FeedbackEventType
+  source          FeedbackSource
+  providerEventId String?
+  dedupeKey       String            @unique
+  payloadJson     Json?
+  occurredAt      DateTime
+  createdAt       DateTime          @default(now())
+
+  @@index([leadId, occurredAt])
+  @@index([messageSendId])
+  @@index([eventType])
 }

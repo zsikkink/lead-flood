@@ -17,7 +17,7 @@ import {
 } from '@lead-flood/contracts';
 
 import { LearningNotImplementedError } from './learning.errors.js';
-import { StubLearningRepository } from './learning.repository.js';
+import { PrismaLearningRepository } from './learning.repository.js';
 import { buildLearningService } from './learning.service.js';
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
@@ -43,7 +43,7 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
 }
 
 export function registerLearningRoutes(app: FastifyInstance): void {
-  const repository = new StubLearningRepository();
+  const repository = new PrismaLearningRepository();
   const service = buildLearningService(repository);
 
   app.post('/v1/learning/runs/retrain', async (request, reply) => {

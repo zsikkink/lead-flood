@@ -1,4 +1,4 @@
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyBaseLogger, type FastifyInstance, type FastifyPluginAsync } from 'fastify';
 import cors from '@fastify/cors';
 import {
   CreateLeadRequestSchema,
@@ -21,11 +21,16 @@ import {
   ReadyResponseSchema,
 } from '@lead-flood/contracts';
 
+import { buildAuthGuard } from './auth/guard.js';
 import type { ApiEnv } from './env.js';
+import { registerAnalyticsRoutes } from './modules/analytics/analytics.routes.js';
 import { registerDiscoveryRoutes } from './modules/discovery/discovery.routes.js';
 import type { DiscoveryRunJobPayload } from './modules/discovery/discovery.service.js';
 import { registerEnrichmentRoutes } from './modules/enrichment/enrichment.routes.js';
+import { registerFeedbackRoutes } from './modules/feedback/feedback.routes.js';
 import { registerIcpRoutes } from './modules/icp/icp.routes.js';
+import { registerLearningRoutes } from './modules/learning/learning.routes.js';
+import { registerMessagingRoutes } from './modules/messaging/messaging.routes.js';
 import { registerScoringRoutes } from './modules/scoring/scoring.routes.js';
 
 export class LeadAlreadyExistsError extends Error {
@@ -65,6 +70,7 @@ export interface JobRecord {
 export interface BuildServerOptions {
   env: ApiEnv;
   logger: FastifyBaseLogger;
+  accessTokenSecret: string;
   checkDatabaseHealth: () => Promise<boolean>;
   authenticateUser: (input: LoginRequest) => Promise<LoginResponse | null>;
   createLeadAndEnqueue: (input: CreateLeadRequest) => Promise<{ leadId: string; jobId: string }>;
@@ -93,6 +99,9 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     done(null, payload);
   });
 
+  app.decorateRequest('user', null);
+
+  // Public routes - no auth required
   app.get('/health', async () => {
     return HealthResponseSchema.parse({ status: 'ok' });
   });
@@ -131,117 +140,130 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     return LoginResponseSchema.parse(login);
   });
 
-  app.post('/v1/leads', async (request, reply) => {
-    const parsedRequest = CreateLeadRequestSchema.safeParse(request.body);
+  // Protected routes - JWT guard applied to all routes registered in this plugin
+  const authGuard = buildAuthGuard(options.accessTokenSecret);
 
-    if (!parsedRequest.success) {
-      reply.status(400);
-      return ErrorResponseSchema.parse({
-        error: 'Invalid lead payload',
-        requestId: request.id,
-      });
-    }
+  const protectedRoutes: FastifyPluginAsync = async (api) => {
+    api.addHook('onRequest', authGuard);
 
-    try {
-      const created = await options.createLeadAndEnqueue(parsedRequest.data);
-      return CreateLeadResponseSchema.parse(created);
-    } catch (error: unknown) {
-      if (error instanceof LeadAlreadyExistsError) {
-        reply.status(409);
+    api.post('/v1/leads', async (request, reply) => {
+      const parsedRequest = CreateLeadRequestSchema.safeParse(request.body);
+
+      if (!parsedRequest.success) {
+        reply.status(400);
         return ErrorResponseSchema.parse({
-          error: error.message,
+          error: 'Invalid lead payload',
           requestId: request.id,
         });
       }
 
-      throw error;
-    }
-  });
+      try {
+        const created = await options.createLeadAndEnqueue(parsedRequest.data);
+        return CreateLeadResponseSchema.parse(created);
+      } catch (error: unknown) {
+        if (error instanceof LeadAlreadyExistsError) {
+          reply.status(409);
+          return ErrorResponseSchema.parse({
+            error: error.message,
+            requestId: request.id,
+          });
+        }
 
-  app.get('/v1/leads', async (request, reply) => {
-    const parsedQuery = ListLeadsQuerySchema.safeParse(request.query);
-    if (!parsedQuery.success) {
-      reply.status(400);
-      return ErrorResponseSchema.parse({
-        error: 'Invalid lead list query',
-        requestId: request.id,
-      });
-    }
-
-    const result = await options.listLeads(parsedQuery.data);
-    return ListLeadsResponseSchema.parse(result);
-  });
-
-  app.get('/v1/leads/:id', async (request, reply) => {
-    const params = request.params as { id?: string };
-    const leadId = params.id;
-
-    if (!leadId) {
-      reply.status(400);
-      return ErrorResponseSchema.parse({
-        error: 'Lead id is required',
-        requestId: request.id,
-      });
-    }
-
-    const lead = await options.getLeadById(leadId);
-
-    if (!lead) {
-      reply.status(404);
-      return ErrorResponseSchema.parse({
-        error: 'Lead not found',
-        requestId: request.id,
-      });
-    }
-
-    return GetLeadResponseSchema.parse({
-      ...lead,
-      createdAt: lead.createdAt.toISOString(),
-      updatedAt: lead.updatedAt.toISOString(),
+        throw error;
+      }
     });
-  });
 
-  app.get('/v1/jobs/:id', async (request, reply) => {
-    const params = request.params as { id?: string };
-    const jobId = params.id;
+    api.get('/v1/leads', async (request, reply) => {
+      const parsedQuery = ListLeadsQuerySchema.safeParse(request.query);
+      if (!parsedQuery.success) {
+        reply.status(400);
+        return ErrorResponseSchema.parse({
+          error: 'Invalid lead list query',
+          requestId: request.id,
+        });
+      }
 
-    if (!jobId) {
-      reply.status(400);
-      return ErrorResponseSchema.parse({
-        error: 'Job id is required',
-        requestId: request.id,
-      });
-    }
-
-    const job = await options.getJobById(jobId);
-
-    if (!job) {
-      reply.status(404);
-      return ErrorResponseSchema.parse({
-        error: 'Job not found',
-        requestId: request.id,
-      });
-    }
-
-    return GetJobStatusResponseSchema.parse({
-      ...job,
-      createdAt: job.createdAt.toISOString(),
-      startedAt: job.startedAt?.toISOString() ?? null,
-      finishedAt: job.finishedAt?.toISOString() ?? null,
-      updatedAt: job.updatedAt.toISOString(),
+      const result = await options.listLeads(parsedQuery.data);
+      return ListLeadsResponseSchema.parse(result);
     });
-  });
 
-  registerIcpRoutes(app);
-  if (options.enqueueDiscoveryRun) {
-    registerDiscoveryRoutes(app, {
-      enqueueDiscoveryRun: options.enqueueDiscoveryRun,
+    api.get('/v1/leads/:id', async (request, reply) => {
+      const params = request.params as { id?: string };
+      const leadId = params.id;
+
+      if (!leadId) {
+        reply.status(400);
+        return ErrorResponseSchema.parse({
+          error: 'Lead id is required',
+          requestId: request.id,
+        });
+      }
+
+      const lead = await options.getLeadById(leadId);
+
+      if (!lead) {
+        reply.status(404);
+        return ErrorResponseSchema.parse({
+          error: 'Lead not found',
+          requestId: request.id,
+        });
+      }
+
+      return GetLeadResponseSchema.parse({
+        ...lead,
+        createdAt: lead.createdAt.toISOString(),
+        updatedAt: lead.updatedAt.toISOString(),
+      });
     });
-  } else {
-    registerDiscoveryRoutes(app);
-  }
-  registerEnrichmentRoutes(app);
-  registerScoringRoutes(app);
+
+    api.get('/v1/jobs/:id', async (request, reply) => {
+      const params = request.params as { id?: string };
+      const jobId = params.id;
+
+      if (!jobId) {
+        reply.status(400);
+        return ErrorResponseSchema.parse({
+          error: 'Job id is required',
+          requestId: request.id,
+        });
+      }
+
+      const job = await options.getJobById(jobId);
+
+      if (!job) {
+        reply.status(404);
+        return ErrorResponseSchema.parse({
+          error: 'Job not found',
+          requestId: request.id,
+        });
+      }
+
+      return GetJobStatusResponseSchema.parse({
+        ...job,
+        createdAt: job.createdAt.toISOString(),
+        startedAt: job.startedAt?.toISOString() ?? null,
+        finishedAt: job.finishedAt?.toISOString() ?? null,
+        updatedAt: job.updatedAt.toISOString(),
+      });
+    });
+
+    registerIcpRoutes(api);
+    if (options.enqueueDiscoveryRun) {
+      registerDiscoveryRoutes(api, {
+        enqueueDiscoveryRun: options.enqueueDiscoveryRun,
+      });
+    } else {
+      registerDiscoveryRoutes(api);
+    }
+    registerEnrichmentRoutes(api);
+    registerScoringRoutes(api);
+    registerMessagingRoutes(api);
+    registerLearningRoutes(api);
+    registerFeedbackRoutes(api);
+    registerAnalyticsRoutes(api);
+  };
+
+  app.register(protectedRoutes);
 
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send(

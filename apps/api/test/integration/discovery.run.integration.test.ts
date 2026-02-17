@@ -3,6 +3,7 @@ import { createLogger } from '@lead-flood/observability';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ApiEnv } from '../../src/env.js';
+import { signJwt } from '../../src/auth/jwt.js';
 import { buildServer } from '../../src/server.js';
 import type { DiscoveryRunJobPayload } from '../../src/modules/discovery/discovery.service.js';
 
@@ -27,6 +28,14 @@ const env: ApiEnv = {
   DISCOVERY_ENABLED: true,
   ENRICHMENT_ENABLED: true,
 };
+
+function authHeaders(): Record<string, string> {
+  const token = signJwt(
+    { sub: 'user_1', sid: 'sess_1', type: 'access', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+    env.JWT_ACCESS_SECRET,
+  );
+  return { authorization: `Bearer ${token}` };
+}
 
 describe('discovery run integration', () => {
   const createdIcpIds: string[] = [];
@@ -75,6 +84,7 @@ describe('discovery run integration', () => {
     const server = buildServer({
       env,
       logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
+      accessTokenSecret: env.JWT_ACCESS_SECRET,
       checkDatabaseHealth: async () => true,
       authenticateUser: async () => null,
       createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
@@ -89,6 +99,7 @@ describe('discovery run integration', () => {
     const createResponse = await server.inject({
       method: 'POST',
       url: '/v1/discovery/runs',
+      headers: authHeaders(),
       payload: {
         icpProfileId: icp.id,
         provider: 'GOOGLE_SEARCH',
@@ -127,6 +138,7 @@ describe('discovery run integration', () => {
     const queuedStatusResponse = await server.inject({
       method: 'GET',
       url: `/v1/discovery/runs/${createBody.runId}`,
+      headers: authHeaders(),
     });
     expect(queuedStatusResponse.statusCode).toBe(200);
     expect(queuedStatusResponse.json()).toMatchObject({
@@ -152,6 +164,7 @@ describe('discovery run integration', () => {
     const runningStatusResponse = await server.inject({
       method: 'GET',
       url: `/v1/discovery/runs/${createBody.runId}`,
+      headers: authHeaders(),
     });
     expect(runningStatusResponse.statusCode).toBe(200);
     expect(runningStatusResponse.json()).toMatchObject({
@@ -175,6 +188,7 @@ describe('discovery run integration', () => {
     const completedStatusResponse = await server.inject({
       method: 'GET',
       url: `/v1/discovery/runs/${createBody.runId}`,
+      headers: authHeaders(),
     });
     expect(completedStatusResponse.statusCode).toBe(200);
     expect(completedStatusResponse.json()).toMatchObject({

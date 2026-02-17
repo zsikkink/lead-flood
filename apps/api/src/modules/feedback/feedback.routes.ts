@@ -10,7 +10,7 @@ import {
 } from '@lead-flood/contracts';
 
 import { FeedbackNotImplementedError } from './feedback.errors.js';
-import { StubFeedbackRepository } from './feedback.repository.js';
+import { PrismaFeedbackRepository } from './feedback.repository.js';
 import { buildFeedbackService } from './feedback.service.js';
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
@@ -36,7 +36,7 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
 }
 
 export function registerFeedbackRoutes(app: FastifyInstance): void {
-  const repository = new StubFeedbackRepository();
+  const repository = new PrismaFeedbackRepository();
   const service = buildFeedbackService(repository);
 
   app.post('/v1/feedback/events', async (request, reply) => {

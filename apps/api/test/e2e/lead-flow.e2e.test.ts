@@ -5,6 +5,7 @@ import { createLogger } from '@lead-flood/observability';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ApiEnv } from '../../src/env.js';
+import { signJwt } from '../../src/auth/jwt.js';
 import { buildServer, LeadAlreadyExistsError, type BuildServerOptions } from '../../src/server.js';
 
 interface LeadEnrichJobPayload {
@@ -101,6 +102,14 @@ async function processLeadEnrichJob(job: { data: LeadEnrichJobPayload }): Promis
   ]);
 }
 
+function authHeaders(): Record<string, string> {
+  const token = signJwt(
+    { sub: 'user_1', sid: 'sess_1', type: 'access', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+    env.JWT_ACCESS_SECRET,
+  );
+  return { authorization: `Bearer ${token}` };
+}
+
 describe('lead pipeline e2e', () => {
   const logger = createLogger({ service: 'api-e2e', env: 'test', level: 'error' });
   let boss: PgBoss | null = null;
@@ -123,6 +132,7 @@ describe('lead pipeline e2e', () => {
     const options: BuildServerOptions = {
       env,
       logger,
+      accessTokenSecret: env.JWT_ACCESS_SECRET,
       checkDatabaseHealth: async () => {
         try {
           await prisma.$queryRaw`SELECT 1`;
@@ -216,6 +226,7 @@ describe('lead pipeline e2e', () => {
     const createResponse = await server.inject({
       method: 'POST',
       url: '/v1/leads',
+      headers: authHeaders(),
       payload: {
         firstName: 'E2E',
         lastName: 'Tester',

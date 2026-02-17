@@ -42,6 +42,13 @@
   "pnpm": {
     "overrides": {
       "@eslint-community/eslint-utils": "4.4.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "sharp"
+    ]
   }
 }
