@@ -3,10 +3,15 @@ import { z } from 'zod';
 export const DiscoveryProviderSchema = z.enum([
   'BRAVE_SEARCH',
   'GOOGLE_PLACES',
-  'GOOGLE_SEARCH',
   'LINKEDIN_SCRAPE',
   'COMPANY_SEARCH_FREE',
   'APOLLO',
+]);
+
+// Legacy read compatibility for historical records written before Google CSE retirement.
+export const DiscoveryRecordProviderSchema = z.union([
+  DiscoveryProviderSchema,
+  z.literal('GOOGLE_SEARCH'),
 ]);
 
 export const DiscoveryRecordStatusSchema = z.enum([
@@ -91,7 +96,7 @@ export const LeadDiscoveryRecordResponseSchema = z
     id: z.string(),
     leadId: z.string(),
     icpProfileId: z.string(),
-    provider: DiscoveryProviderSchema,
+    provider: DiscoveryRecordProviderSchema,
     providerSource: z.string().nullable().optional(),
     providerConfidence: z.number().nullable().optional(),
     providerRecordId: z.string(),
@@ -117,6 +122,7 @@ export const ListDiscoveryRecordsResponseSchema = z
   .strict();
 
 export type DiscoveryProvider = z.infer<typeof DiscoveryProviderSchema>;
+export type DiscoveryRecordProvider = z.infer<typeof DiscoveryRecordProviderSchema>;
 export type DiscoveryRecordStatus = z.infer<typeof DiscoveryRecordStatusSchema>;
 export type PipelineRunStatus = z.infer<typeof DiscoveryPipelineRunStatusSchema>;
 export type CreateDiscoveryRunRequest = z.infer<typeof CreateDiscoveryRunRequestSchema>;

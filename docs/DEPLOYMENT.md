@@ -2,6 +2,8 @@
 
 Deployment is controlled by GitHub Actions.
 
+For remote Postgres provider setup and SQL-first migration strategy, see `docs/PROD_REMOTE_DB_STRATEGY.md`.
+
 ## CI Workflow
 
 File: `.github/workflows/ci.yml`
@@ -86,6 +88,23 @@ pnpm test
 pnpm test:e2e
 pnpm build
 ```
+
+## Production DB Migration Steps
+
+Production migrations are SQL-first via Supabase CLI.
+
+```bash
+pnpm db:link
+pnpm db:migrate:prod
+pnpm db:verify:prod
+pnpm db:prisma:sync
+```
+
+## Forbidden Production Actions
+
+- Do not use `prisma migrate deploy` as the production migration driver.
+- Do not apply manual production schema edits without committing a SQL migration.
+- Do not commit Supabase service-role keys or DB secrets.
 
 ## Rollback Approach
 

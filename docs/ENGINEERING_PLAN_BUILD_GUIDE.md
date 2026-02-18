@@ -54,7 +54,7 @@ Core entities:
 
 Key enums include:
 
-- `DiscoveryProvider`: `GOOGLE_SEARCH`, `LINKEDIN_SCRAPE`, `COMPANY_SEARCH_FREE`, `APOLLO`
+- `DiscoveryProvider` (legacy adapter pipeline metadata): `BRAVE_SEARCH`, `GOOGLE_PLACES`, `LINKEDIN_SCRAPE`, `COMPANY_SEARCH_FREE`, `APOLLO`
 - `EnrichmentProvider`: `HUNTER`, `CLEARBIT`, `OTHER_FREE`, `PEOPLE_DATA_LABS`
 - `QualificationRuleType`: `WEIGHTED`, `HARD_FILTER`
 - `ScoreBand`: `LOW`, `MEDIUM`, `HIGH`

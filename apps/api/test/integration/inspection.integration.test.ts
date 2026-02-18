@@ -109,7 +109,7 @@ describe('inspection endpoints integration', () => {
       data: {
         leadId: lead.id,
         icpProfileId: icp.id,
-        provider: 'GOOGLE_SEARCH',
+        provider: 'BRAVE_SEARCH',
         providerRecordId: `provider-${Date.now()}`,
         queryHash: 'hash-1',
         status: 'DISCOVERED',

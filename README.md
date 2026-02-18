@@ -97,9 +97,33 @@ pnpm build
 
 - `pnpm doctor` validates Node/pnpm/Docker prerequisites
 - `pnpm bootstrap` runs preflight, installs deps, creates env files, starts infra, migrates, and seeds
+- `pnpm db:link` links Supabase CLI to the configured project (default: `cbcgrzvqidtrtrtnzlso`)
+- `pnpm db:migrate:prod` applies SQL migrations from `supabase/migrations` to linked prod DB
+- `pnpm db:verify:prod` verifies remote DB migration metadata and readiness
+- `pnpm db:prisma:sync` introspects DB into Prisma schema and regenerates client
+- `pnpm db:pull:drift -- --confirm` captures remote schema drift into a SQL migration (review required)
 - `pnpm discovery:seed` seeds SerpAPI discovery frontier tasks (`search_tasks`)
 - `pnpm learning:backfill-features -- --icpProfileId <id> --batchSize 200`
 - `pnpm learning:backfill-features -- --dry-run`
+
+## Production DB
+
+Primary provider strategy is documented in `docs/PROD_REMOTE_DB_STRATEGY.md`.
+Canonical production migration files live in `supabase/migrations/*.sql`.
+
+Canonical production schema flow:
+
+```bash
+pnpm db:link
+pnpm db:migrate:prod
+pnpm db:verify:prod
+pnpm db:prisma:sync
+```
+
+> Do not do this:
+> - Do not run `prisma migrate deploy` for production rollout.
+> - Do not edit production schema manually without capturing a SQL migration.
+> - Do not commit `SUPABASE_SERVICE_ROLE_KEY`, DB passwords, or access tokens.
 
 ## Documentation
 
@@ -107,6 +131,8 @@ pnpm build
 - Setup and onboarding: `docs/SETUP_ONBOARDING.md`
 - Engineering guide: `docs/ENGINEERING_PLAN_BUILD_GUIDE.md`
 - Deployment: `docs/DEPLOYMENT.md`
+- Production remote DB strategy: `docs/PROD_REMOTE_DB_STRATEGY.md`
+- Vercel production setup: `docs/VERCEL_PROD_SETUP.md`
 - Troubleshooting: `docs/TROUBLESHOOTING.md`
 - Discovery providers: `docs/DISCOVERY_PROVIDER_STACK.md`
 - SerpAPI discovery: `docs/SERPAPI_DISCOVERY.md`

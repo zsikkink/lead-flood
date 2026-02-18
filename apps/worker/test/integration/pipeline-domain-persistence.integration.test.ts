@@ -6,7 +6,6 @@ import {
   ClearbitAdapter,
   CompanySearchAdapter,
   GooglePlacesAdapter,
-  GoogleSearchAdapter,
   HunterAdapter,
   LinkedInScrapeAdapter,
   PdlEnrichmentAdapter,
@@ -121,9 +120,9 @@ describe('pipeline domain persistence integration', () => {
       error: vi.fn(),
     };
 
-    const googleSearchAdapter = new GoogleSearchAdapter({
+    const braveSearchAdapter = new BraveSearchAdapter({
+      enabled: true,
       apiKey: 'test-key',
-      searchEngineId: 'test-engine',
       minRequestIntervalMs: 0,
       fetchImpl: vi.fn(async () => {
         return new Response(
@@ -144,7 +143,7 @@ describe('pipeline domain persistence integration', () => {
     const discoveryPayload: DiscoveryRunJobPayload = {
       runId: `run-discovery-${Date.now()}`,
       icpProfileId: icp.id,
-      provider: 'GOOGLE_SEARCH',
+      provider: 'BRAVE_SEARCH',
       limit: 1,
       correlationId: 'corr-discovery',
       requestedByUserId: 'system',
@@ -164,19 +163,13 @@ describe('pipeline domain persistence integration', () => {
           minRequestIntervalMs: 0,
           fetchImpl: vi.fn() as unknown as typeof fetch,
         }),
-        braveSearchAdapter: new BraveSearchAdapter({
-          enabled: false,
-          apiKey: undefined,
-          minRequestIntervalMs: 0,
-          fetchImpl: vi.fn() as unknown as typeof fetch,
-        }),
+        braveSearchAdapter,
         googlePlacesAdapter: new GooglePlacesAdapter({
           enabled: false,
           apiKey: undefined,
           minRequestIntervalMs: 0,
           fetchImpl: vi.fn() as unknown as typeof fetch,
         }),
-        googleSearchAdapter,
         linkedInScrapeAdapter: new LinkedInScrapeAdapter({
           enabled: false,
           scrapeEndpoint: undefined,
@@ -189,12 +182,11 @@ describe('pipeline domain persistence integration', () => {
         }),
         discoveryEnabled: true,
         apolloEnabled: false,
-        braveSearchEnabled: false,
+        braveSearchEnabled: true,
         googlePlacesEnabled: false,
-        googleSearchEnabled: true,
         linkedInScrapeEnabled: false,
         companySearchEnabled: false,
-        defaultProvider: 'GOOGLE_SEARCH',
+        defaultProvider: 'BRAVE_SEARCH',
         providerOrder: [],
         defaultEnrichmentProvider: 'HUNTER',
       },
@@ -218,7 +210,7 @@ describe('pipeline domain persistence integration', () => {
       },
     });
     expect(discoveryRecord).not.toBeNull();
-    expect(discoveryRecord?.provider).toBe('GOOGLE_SEARCH');
+    expect(discoveryRecord?.provider).toBe('BRAVE_SEARCH');
 
     const enrichmentRequest = enrichmentSends.find((send) => send.queueName === 'enrichment.run');
     expect(enrichmentRequest).toBeDefined();

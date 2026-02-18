@@ -14,7 +14,6 @@ import {
   CompanySearchAdapter,
   ClearbitAdapter,
   GooglePlacesAdapter,
-  GoogleSearchAdapter,
   HunterEnrichmentAdapter,
   LinkedInScrapeAdapter,
   PdlEnrichmentAdapter,
@@ -123,30 +122,6 @@ interface WorkerRegistrationOptions {
   concurrent?: boolean;
 }
 
-const ALL_DISCOVERY_PROVIDERS: DiscoveryProvider[] = [
-  'BRAVE_SEARCH',
-  'GOOGLE_PLACES',
-  'GOOGLE_SEARCH',
-  'LINKEDIN_SCRAPE',
-  'COMPANY_SEARCH_FREE',
-  'APOLLO',
-];
-
-function parseDiscoveryProviderOrder(raw: string | undefined): DiscoveryProvider[] {
-  if (!raw) {
-    return [];
-  }
-
-  const values = raw
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry): entry is DiscoveryProvider =>
-      ALL_DISCOVERY_PROVIDERS.includes(entry as DiscoveryProvider),
-    );
-
-  return Array.from(new Set(values));
-}
-
 async function registerWorker<TPayload>(
   boss: BossForWork,
   logger: WorkerLogger,
@@ -222,13 +197,6 @@ async function main(): Promise<void> {
     minRequestIntervalMs: env.GOOGLE_PLACES_RATE_LIMIT_MS,
   });
 
-  const googleSearchAdapter = new GoogleSearchAdapter({
-    apiKey: env.GOOGLE_SEARCH_API_KEY,
-    searchEngineId: env.GOOGLE_SEARCH_ENGINE_ID,
-    baseUrl: env.GOOGLE_SEARCH_BASE_URL,
-    minRequestIntervalMs: env.GOOGLE_SEARCH_RATE_LIMIT_MS,
-  });
-
   const linkedInScrapeAdapter = new LinkedInScrapeAdapter({
     enabled: env.LINKEDIN_SCRAPE_ENABLED,
     scrapeEndpoint: env.LINKEDIN_SCRAPE_ENDPOINT,
@@ -263,36 +231,70 @@ async function main(): Promise<void> {
     enabled: env.OTHER_FREE_ENRICHMENT_ENABLED,
     baseUrl: env.PUBLIC_LOOKUP_BASE_URL,
   });
-  const discoveryProviderOrder = parseDiscoveryProviderOrder(env.DISCOVERY_PROVIDER_ORDER);
+  const discoveryProviderOrder: DiscoveryProvider[] = [];
 
   let discoveryRuntimeConfig: DiscoveryRuntimeConfig | null = null;
   let serpApiProvider: SerpApiDiscoveryProvider | null = null;
-  try {
-    discoveryRuntimeConfig = loadDiscoveryRuntimeConfig(process.env);
-    if (discoveryRuntimeConfig.mapsZoomWarning) {
+  if (env.SERPAPI_DISCOVERY_ENABLED) {
+    try {
+      discoveryRuntimeConfig = loadDiscoveryRuntimeConfig(process.env);
+      if (discoveryRuntimeConfig.mapsZoomWarning) {
+        logger.warn(
+          {
+            warning: discoveryRuntimeConfig.mapsZoomWarning,
+          },
+          'Using default discovery maps zoom',
+        );
+      }
+      serpApiProvider = new SerpApiDiscoveryProvider({
+        apiKey: discoveryRuntimeConfig.serpApiKey,
+        rps: discoveryRuntimeConfig.rps,
+        enableCache: discoveryRuntimeConfig.enableCache,
+        maxAttempts: discoveryRuntimeConfig.maxTaskAttempts,
+        backoffBaseSeconds: discoveryRuntimeConfig.backoffBaseSeconds,
+        mapsZoom: discoveryRuntimeConfig.mapsZoom,
+      });
+      logger.info(
+        {
+          provider: 'SERPAPI',
+          enabled: true,
+          rps: discoveryRuntimeConfig.rps,
+          concurrency: discoveryRuntimeConfig.concurrency,
+          maxTaskAttempts: discoveryRuntimeConfig.maxTaskAttempts,
+          runMaxTasks: env.DISCOVERY_RUN_MAX_TASKS ?? null,
+          countries: discoveryRuntimeConfig.countries,
+          languages: discoveryRuntimeConfig.languages,
+        },
+        'Discovery search-task pipeline configured',
+      );
+    } catch (error: unknown) {
       logger.warn(
         {
-          warning: discoveryRuntimeConfig.mapsZoomWarning,
+          provider: 'SERPAPI',
+          enabled: false,
+          error: error instanceof Error ? error.message : 'invalid discovery runtime config',
         },
-        'Using default discovery maps zoom',
+        'SerpAPI discovery runtime disabled; set SERPAPI_API_KEY and discovery env vars to enable',
       );
     }
-    serpApiProvider = new SerpApiDiscoveryProvider({
-      apiKey: discoveryRuntimeConfig.serpApiKey,
-      rps: discoveryRuntimeConfig.rps,
-      enableCache: discoveryRuntimeConfig.enableCache,
-      maxAttempts: discoveryRuntimeConfig.maxTaskAttempts,
-      backoffBaseSeconds: discoveryRuntimeConfig.backoffBaseSeconds,
-      mapsZoom: discoveryRuntimeConfig.mapsZoom,
-    });
-  } catch (error: unknown) {
+  } else {
     logger.warn(
       {
-        error: error instanceof Error ? error.message : 'invalid discovery runtime config',
+        provider: 'SERPAPI',
+        enabled: false,
       },
-      'SerpAPI discovery runtime disabled; set SERPAPI_API_KEY and discovery env vars to enable',
+      'SerpAPI discovery runtime disabled via SERPAPI_DISCOVERY_ENABLED=false',
     );
   }
+
+  logger.info(
+    {
+      legacyDiscoveryRunEnabled: env.DISCOVERY_ENABLED,
+      legacyDefaultProvider: 'BRAVE_SEARCH',
+      legacyProviderOrder: discoveryProviderOrder,
+    },
+    'Legacy discovery.run provider pipeline configuration',
+  );
 
   const openAiAdapter = new OpenAiAdapter({
     apiKey: env.OPENAI_API_KEY,
@@ -347,17 +349,15 @@ async function main(): Promise<void> {
       apolloAdapter,
       braveSearchAdapter,
       googlePlacesAdapter,
-      googleSearchAdapter,
       linkedInScrapeAdapter,
       companySearchAdapter,
       discoveryEnabled: env.DISCOVERY_ENABLED,
       apolloEnabled: env.APOLLO_ENABLED,
       braveSearchEnabled: env.BRAVE_SEARCH_ENABLED,
       googlePlacesEnabled: env.GOOGLE_PLACES_ENABLED,
-      googleSearchEnabled: env.GOOGLE_SEARCH_ENABLED,
       linkedInScrapeEnabled: env.LINKEDIN_SCRAPE_ENABLED,
       companySearchEnabled: env.COMPANY_SEARCH_ENABLED,
-      defaultProvider: env.DISCOVERY_DEFAULT_PROVIDER,
+      defaultProvider: 'BRAVE_SEARCH',
       providerOrder: discoveryProviderOrder,
       defaultEnrichmentProvider: env.ENRICHMENT_DEFAULT_PROVIDER,
     }),

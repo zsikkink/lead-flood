@@ -1,5 +1,28 @@
 import { z } from 'zod';
 
+const LEGACY_GOOGLE_CSE_ENV_KEYS = [
+  'GOOGLE_SEARCH_ENABLED',
+  'GOOGLE_SEARCH_API_KEY',
+  'GOOGLE_SEARCH_ENGINE_ID',
+  'GOOGLE_SEARCH_BASE_URL',
+  'GOOGLE_SEARCH_RATE_LIMIT_MS',
+  'GOOGLE_CSE_API_KEY',
+  'GOOGLE_CSE_ENGINE_ID',
+  'GOOGLE_CSE_BASE_URL',
+  'GOOGLE_CUSTOM_SEARCH_API_KEY',
+  'GOOGLE_CUSTOM_SEARCH_ENGINE_ID',
+  'CUSTOMSEARCH_API_KEY',
+  'CUSTOMSEARCH_ENGINE_ID',
+] as const;
+
+function findLegacyGoogleCseEnvKeys(source: NodeJS.ProcessEnv): string[] {
+  const explicitMatches = LEGACY_GOOGLE_CSE_ENV_KEYS.filter((key) => key in source);
+  const inferredMatches = Object.keys(source).filter((key) =>
+    key.toUpperCase().includes('CUSTOMSEARCH'),
+  );
+  return Array.from(new Set([...explicitMatches, ...inferredMatches]));
+}
+
 const ApiEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   APP_ENV: z.string().min(1).default('local'),
@@ -13,9 +36,6 @@ const ApiEnvSchema = z.object({
   DIRECT_URL: z.string().min(1),
   APOLLO_ENABLED: z.coerce.boolean().optional(),
   APOLLO_API_KEY: z.string().min(1).optional(),
-  GOOGLE_SEARCH_ENABLED: z.coerce.boolean().optional(),
-  GOOGLE_SEARCH_API_KEY: z.string().min(1).optional(),
-  GOOGLE_SEARCH_ENGINE_ID: z.string().min(1).optional(),
   LINKEDIN_SCRAPE_ENABLED: z.coerce.boolean().optional(),
   LINKEDIN_SCRAPE_API_KEY: z.string().min(1).optional(),
   LINKEDIN_SCRAPE_ENDPOINT: z.string().url().optional(),
@@ -38,6 +58,15 @@ const ApiEnvSchema = z.object({
 export type ApiEnv = z.infer<typeof ApiEnvSchema>;
 
 export function loadApiEnv(source: NodeJS.ProcessEnv): ApiEnv {
+  const legacyGoogleCseKeys = findLegacyGoogleCseEnvKeys(source);
+  if (legacyGoogleCseKeys.length > 0) {
+    throw new Error(
+      `Google CSE is deprecated and not supported in this repository. Remove legacy env vars: ${legacyGoogleCseKeys.join(
+        ', ',
+      )}`,
+    );
+  }
+
   const parsed = ApiEnvSchema.safeParse(source);
 
   if (!parsed.success) {

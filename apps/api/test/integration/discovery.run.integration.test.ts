@@ -102,7 +102,7 @@ describe('discovery run integration', () => {
       headers: authHeaders(),
       payload: {
         icpProfileId: icp.id,
-        provider: 'GOOGLE_SEARCH',
+        provider: 'BRAVE_SEARCH',
         limit: 25,
         cursor: 'page_1',
         requestedByUserId: 'user_1',
@@ -123,7 +123,7 @@ describe('discovery run integration', () => {
     expect(enqueuedPayload).toEqual({
       runId: createBody.runId,
       icpProfileId: icp.id,
-      provider: 'GOOGLE_SEARCH',
+      provider: 'BRAVE_SEARCH',
       limit: 25,
       cursor: 'page_1',
       requestedByUserId: 'user_1',

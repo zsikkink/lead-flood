@@ -236,7 +236,6 @@ function buildProviderQueries(
   provider:
     | 'BRAVE_SEARCH'
     | 'GOOGLE_PLACES'
-    | 'GOOGLE_SEARCH'
     | 'LINKEDIN_SCRAPE'
     | 'COMPANY_SEARCH_FREE'
     | 'APOLLO';
@@ -248,14 +247,6 @@ function buildProviderQueries(
     ...filters.requiredTechnologies,
     ...filters.includeTerms,
   ];
-
-  const googleQuery = [
-    includeTerms.length > 0 ? includeTerms.map((term) => quoteTerm(term)).join(' ') : 'B2B companies',
-    ...filters.excludedDomains.map((domain) => `-site:${domain}`),
-    ...filters.excludeTerms.map((term) => `-${quoteTerm(term)}`),
-  ]
-    .filter(Boolean)
-    .join(' ');
 
   const linkedinQuery = [
     'site:linkedin.com/in',
@@ -305,7 +296,6 @@ function buildProviderQueries(
   return [
     { provider: 'BRAVE_SEARCH', query: braveQuery || null },
     { provider: 'GOOGLE_PLACES', query: placesQuery || null },
-    { provider: 'GOOGLE_SEARCH', query: googleQuery },
     { provider: 'LINKEDIN_SCRAPE', query: linkedinQuery },
     { provider: 'COMPANY_SEARCH_FREE', query: companySearchQuery || null },
     { provider: 'APOLLO', query: apolloPayload },

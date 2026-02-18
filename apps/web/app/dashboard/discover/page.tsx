@@ -23,7 +23,8 @@ import { useAuth } from '../../../src/hooks/use-auth.js';
 const PROVIDER_OPTIONS = [
   { value: '', label: 'Auto (Best Match)' },
   { value: 'APOLLO', label: 'Apollo' },
-  { value: 'GOOGLE_SEARCH', label: 'Google Search' },
+  { value: 'BRAVE_SEARCH', label: 'Brave Search' },
+  { value: 'GOOGLE_PLACES', label: 'Google Places' },
   { value: 'LINKEDIN_SCRAPE', label: 'LinkedIn Scrape' },
   { value: 'COMPANY_SEARCH_FREE', label: 'Company Search' },
 ];

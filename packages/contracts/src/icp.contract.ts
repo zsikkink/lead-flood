@@ -213,10 +213,14 @@ export const IcpStatusResponseSchema = z
 const IcpDebugDiscoveryProviderSchema = z.enum([
   'BRAVE_SEARCH',
   'GOOGLE_PLACES',
-  'GOOGLE_SEARCH',
   'LINKEDIN_SCRAPE',
   'COMPANY_SEARCH_FREE',
   'APOLLO',
+]);
+
+const IcpDebugRecordProviderSchema = z.union([
+  IcpDebugDiscoveryProviderSchema,
+  z.literal('GOOGLE_SEARCH'),
 ]);
 
 export const IcpDebugRuleEvaluationSchema = z
@@ -246,7 +250,7 @@ export const IcpDebugSampleItemSchema = z
   .object({
     leadId: z.string(),
     discoveryRecordId: z.string(),
-    provider: IcpDebugDiscoveryProviderSchema,
+    provider: IcpDebugRecordProviderSchema,
     rawPayload: z.unknown(),
     normalizedPayload: IcpDebugNormalizedSampleSchema.nullable(),
     ruleEvaluations: z.array(IcpDebugRuleEvaluationSchema),

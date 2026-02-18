@@ -9,7 +9,6 @@ import {
   ApolloRateLimitError,
   BraveSearchRateLimitError,
   GooglePlacesRateLimitError,
-  GoogleSearchRateLimitError,
   LinkedInScrapeRateLimitError,
 } from '@lead-flood/providers';
 import type {
@@ -21,8 +20,6 @@ import type {
   CompanySearchDiscoveryRequest,
   GooglePlacesAdapter,
   GooglePlacesDiscoveryRequest,
-  GoogleSearchAdapter,
-  GoogleSearchDiscoveryRequest,
   LinkedInScrapeAdapter,
   LinkedInScrapeDiscoveryRequest,
 } from '@lead-flood/providers';
@@ -80,14 +77,12 @@ export interface DiscoveryRunDependencies {
   apolloAdapter: ApolloDiscoveryAdapter;
   braveSearchAdapter: BraveSearchAdapter;
   googlePlacesAdapter: GooglePlacesAdapter;
-  googleSearchAdapter: GoogleSearchAdapter;
   linkedInScrapeAdapter: LinkedInScrapeAdapter;
   companySearchAdapter: CompanySearchAdapter;
   discoveryEnabled: boolean;
   apolloEnabled: boolean;
   braveSearchEnabled: boolean;
   googlePlacesEnabled: boolean;
-  googleSearchEnabled: boolean;
   linkedInScrapeEnabled: boolean;
   companySearchEnabled: boolean;
   defaultProvider: DiscoveryProvider;
@@ -134,10 +129,9 @@ interface DiscoveryRunProgress {
   failedItems: number;
 }
 
-const PROVIDER_DEFAULT_CONFIDENCE: Record<DiscoveryProvider, number> = {
+const PROVIDER_DEFAULT_CONFIDENCE: Partial<Record<DiscoveryProvider, number>> = {
   BRAVE_SEARCH: 0.75,
   GOOGLE_PLACES: 0.85,
-  GOOGLE_SEARCH: 0.7,
   LINKEDIN_SCRAPE: 0.65,
   COMPANY_SEARCH_FREE: 0.6,
   APOLLO: 0.9,
@@ -341,7 +335,7 @@ function toCountryDomainHints(country: string): string[] {
   return [];
 }
 
-function buildGoogleSearchQueryFromFilters(filters: DiscoveryRunFilters | undefined): string {
+function buildWebDiscoveryQueryFromFilters(filters: DiscoveryRunFilters | undefined): string {
   if (!filters) {
     return 'B2B companies';
   }
@@ -719,7 +713,7 @@ function toBraveSearchRequest(
   if (payload.filters) {
     request.filters = payload.filters;
   }
-  request.query = buildGoogleSearchQueryFromFilters(payload.filters);
+  request.query = buildWebDiscoveryQueryFromFilters(payload.filters);
 
   return request;
 }
@@ -743,31 +737,7 @@ function toGooglePlacesRequest(
   if (payload.filters) {
     request.filters = payload.filters;
   }
-  request.query = buildGoogleSearchQueryFromFilters(payload.filters);
-
-  return request;
-}
-
-function toGoogleSearchRequest(
-  payload: DiscoveryRunJobPayload,
-  limit: number,
-  correlationId: string,
-): GoogleSearchDiscoveryRequest {
-  const request: GoogleSearchDiscoveryRequest = {
-    limit,
-    correlationId,
-  };
-
-  if (payload.icpProfileId) {
-    request.icpProfileId = payload.icpProfileId;
-  }
-  if (payload.cursor) {
-    request.cursor = payload.cursor;
-  }
-  if (payload.filters) {
-    request.filters = payload.filters;
-  }
-  request.query = buildGoogleSearchQueryFromFilters(payload.filters);
+  request.query = buildWebDiscoveryQueryFromFilters(payload.filters);
 
   return request;
 }
@@ -838,7 +808,7 @@ interface ProviderLeadInput {
 }
 
 function defaultProviderConfidence(provider: DiscoveryProvider): number {
-  return PROVIDER_DEFAULT_CONFIDENCE[provider];
+  return PROVIDER_DEFAULT_CONFIDENCE[provider] ?? 0.5;
 }
 
 function toNormalizedDiscoveryLead(
@@ -977,27 +947,6 @@ async function executeDiscoveryProvider(
 
       const result = await dependencies.googlePlacesAdapter.discoverLeads(
         toGooglePlacesRequest(payload, limit, correlationId),
-      );
-      return {
-        provider,
-        source: result.source,
-        leads: result.leads.map((lead) => toNormalizedDiscoveryLead(provider, result.source, lead)),
-        nextCursor: result.nextCursor,
-      };
-    }
-
-    case 'GOOGLE_SEARCH': {
-      if (!dependencies.googleSearchEnabled) {
-        logger.warn(
-          { jobId, runId: payload.runId, correlationId, provider },
-          'Skipping discovery provider because it is disabled',
-        );
-        return { provider, source: 'disabled', leads: [], nextCursor: null };
-      }
-
-      const googleRequest = toGoogleSearchRequest(payload, limit, correlationId);
-      const result = await dependencies.googleSearchAdapter.discoverLeads(
-        googleRequest,
       );
       return {
         provider,
@@ -1560,7 +1509,6 @@ export async function handleDiscoveryRunJob(
       error instanceof ApolloRateLimitError ||
       error instanceof BraveSearchRateLimitError ||
       error instanceof GooglePlacesRateLimitError ||
-      error instanceof GoogleSearchRateLimitError ||
       error instanceof LinkedInScrapeRateLimitError
     ) {
       logger.warn(

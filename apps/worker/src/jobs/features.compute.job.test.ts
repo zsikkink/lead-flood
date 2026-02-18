@@ -32,14 +32,14 @@ describe('features.compute helpers', () => {
 
   it('computeFeatureVectorHash is stable across key order variations', () => {
     const firstHash = computeFeatureVectorHash({
-      source_provider: 'GOOGLE_SEARCH',
+      source_provider: 'BRAVE_SEARCH',
       has_email: true,
       has_domain: true,
     });
     const secondHash = computeFeatureVectorHash({
       has_domain: true,
       has_email: true,
-      source_provider: 'GOOGLE_SEARCH',
+      source_provider: 'BRAVE_SEARCH',
     });
 
     expect(firstHash).toBe(secondHash);

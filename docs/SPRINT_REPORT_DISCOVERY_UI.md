@@ -87,20 +87,20 @@ pnpm db:migrate
 Set in `apps/api/.env.local`:
 
 ```bash
-ADMIN_API_KEY=local-admin-key
+ADMIN_API_KEY=<set-admin-api-key>
 ```
 
 Set in `apps/web/.env.local`:
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://localhost:5050
-NEXT_PUBLIC_ADMIN_API_KEY=local-admin-key
+NEXT_PUBLIC_ADMIN_API_KEY=<set-admin-api-key>
 ```
 
 Set in `apps/worker/.env.local`:
 
 ```bash
-SERPAPI_API_KEY=REAL_KEY
+SERPAPI_API_KEY=<set-serpapi-api-key>
 DISCOVERY_RUN_MAX_TASKS=40
 ```
 
@@ -130,15 +130,15 @@ pnpm --filter @lead-flood/web dev
 ### 5) API calls
 
 ```bash
-curl -sS -H "x-admin-key: local-admin-key" "http://localhost:5050/v1/admin/leads?page=1&pageSize=20"
-curl -sS -H "x-admin-key: local-admin-key" "http://localhost:5050/v1/admin/search-tasks?page=1&pageSize=20"
-curl -sS -X POST -H "content-type: application/json" -H "x-admin-key: local-admin-key" \
+curl -sS -H "x-admin-key: <set-admin-api-key>" "http://localhost:5050/v1/admin/leads?page=1&pageSize=20"
+curl -sS -H "x-admin-key: <set-admin-api-key>" "http://localhost:5050/v1/admin/search-tasks?page=1&pageSize=20"
+curl -sS -X POST -H "content-type: application/json" -H "x-admin-key: <set-admin-api-key>" \
   "http://localhost:5050/v1/admin/jobs/discovery/seed" \
   -d '{"profile":"small","maxTasks":40,"maxPages":1,"bucket":"ui-validation"}'
-curl -sS -X POST -H "content-type: application/json" -H "x-admin-key: local-admin-key" \
+curl -sS -X POST -H "content-type: application/json" -H "x-admin-key: <set-admin-api-key>" \
   "http://localhost:5050/v1/admin/jobs/discovery/run" \
   -d '{"maxTasks":40,"concurrency":1,"timeBucket":"2026-W08:ui-validation"}'
-curl -sS -H "x-admin-key: local-admin-key" "http://localhost:5050/v1/admin/jobs/runs?page=1&pageSize=20"
+curl -sS -H "x-admin-key: <set-admin-api-key>" "http://localhost:5050/v1/admin/jobs/runs?page=1&pageSize=20"
 ```
 
 ### 6) SQL verification
@@ -297,3 +297,51 @@ pnpm --filter @lead-flood/worker exec tsx ../../scripts/discovery/inspect_payloa
 
 pnpm --filter @lead-flood/discovery test:unit
 ```
+
+## Production Remote DB Strategy
+
+### Summary
+
+- Switched production migration strategy to Supabase SQL-first migrations.
+- Primary provider documented: Supabase Postgres (free tier).
+- Fallback provider documented: Neon Postgres (free tier).
+- Added Vercel deployment checklist for `apps/web` with exact env vars for preview and production.
+- Added repeatable production DB scripts with strict env validation:
+  - `scripts/db/supabase-link.sh`
+  - `scripts/db/migrate-prod.sh`
+  - `scripts/db/verify-prod.sh`
+  - `scripts/db/pull-drift.sh`
+  - `scripts/db/prisma-sync.sh`
+  - `scripts/db/guard-no-prisma-migrate-prod.sh`
+- Added root script aliases:
+  - `pnpm db:link`
+  - `pnpm db:migrate:prod`
+  - `pnpm db:verify:prod`
+  - `pnpm db:pull:drift`
+  - `pnpm db:prisma:sync`
+- Updated env examples with Supabase project/linking vars and secret-handling notes.
+
+### Commands
+
+```bash
+# one-time auth
+supabase login
+
+# production SQL migration flow
+pnpm db:link
+pnpm db:migrate:prod
+pnpm db:verify:prod
+pnpm db:prisma:sync
+
+# or load from env file
+ENV_FILE=.env.production.local pnpm db:link
+ENV_FILE=.env.production.local pnpm db:migrate:prod
+ENV_FILE=.env.production.local pnpm db:verify:prod
+ENV_FILE=.env.production.local pnpm db:prisma:sync
+```
+
+### Risks / Limitations
+
+- Free tiers can autosuspend on inactivity and have strict storage/compute limits.
+- Backup/retention windows are limited on free plans.
+- Migration rollback is forward-fix oriented; use corrective SQL migration or provider restore.
