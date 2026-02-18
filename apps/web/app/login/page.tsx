@@ -59,12 +59,12 @@ export default function LoginPage() {
         <div className="mb-8 text-center">
           <div className="mb-4 inline-block">
             <Image
-              src="/zbooni-logo.png"
+              src="/zbooni-logo-dark.png"
               alt="Zbooni"
-              width={160}
-              height={48}
+              width={200}
+              height={200}
               priority
-              className="mx-auto"
+              className="mx-auto invert"
             />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">Sales OS</h1>
