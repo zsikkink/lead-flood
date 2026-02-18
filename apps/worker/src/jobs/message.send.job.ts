@@ -25,7 +25,7 @@ export interface MessageSendJobPayload extends Pick<SendMessageRequest, 'message
   sendId: string;
   channel: 'EMAIL' | 'WHATSAPP';
   followUpNumber?: number | undefined;
-  correlationId?: string;
+  correlationId?: string | undefined;
 }
 
 export interface MessageSendLogger {

@@ -408,6 +408,10 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
     return { type: 'number' };
   }
 
+  if (schema instanceof z.ZodEnum) {
+    return { type: 'string', enum: (schema as z.ZodEnum<[string, ...string[]]>).options };
+  }
+
   if (schema instanceof z.ZodArray) {
     return {
       type: 'array',

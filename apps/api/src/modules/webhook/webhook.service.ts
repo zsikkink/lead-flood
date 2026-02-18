@@ -69,42 +69,44 @@ export async function processTrengoWebhook(
     };
   }
 
-  // Upsert FeedbackEvent (idempotent via dedupeKey)
-  const event = await prisma.feedbackEvent.upsert({
-    where: { dedupeKey },
-    create: {
-      leadId: messageSend.leadId,
-      messageSendId: messageSend.id,
-      eventType: 'REPLIED',
-      source: 'WEBHOOK',
-      providerEventId: String(messageId),
-      dedupeKey,
-      payloadJson: JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue,
-      replyText,
-      occurredAt: new Date(),
-    },
-    update: {},
+  // Atomic: upsert feedback event + mark replied + cancel follow-ups
+  const event = await prisma.$transaction(async (tx) => {
+    const feedbackEvent = await tx.feedbackEvent.upsert({
+      where: { dedupeKey },
+      create: {
+        leadId: messageSend.leadId,
+        messageSendId: messageSend.id,
+        eventType: 'REPLIED',
+        source: 'WEBHOOK',
+        providerEventId: String(messageId),
+        dedupeKey,
+        payloadJson: JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue,
+        replyText,
+        occurredAt: new Date(),
+      },
+      update: {},
+    });
+
+    await tx.messageSend.update({
+      where: { id: messageSend.id },
+      data: {
+        status: 'REPLIED',
+        repliedAt: new Date(),
+      },
+    });
+
+    await tx.messageSend.updateMany({
+      where: {
+        leadId: messageSend.leadId,
+        nextFollowUpAfter: { not: null },
+      },
+      data: { nextFollowUpAfter: null },
+    });
+
+    return feedbackEvent;
   });
 
-  // Also update the MessageSend status to REPLIED
-  await prisma.messageSend.update({
-    where: { id: messageSend.id },
-    data: {
-      status: 'REPLIED',
-      repliedAt: new Date(),
-    },
-  });
-
-  // Cancel all pending follow-ups for this lead
-  await prisma.messageSend.updateMany({
-    where: {
-      leadId: messageSend.leadId,
-      nextFollowUpAfter: { not: null },
-    },
-    data: { nextFollowUpAfter: null },
-  });
-
-  // Enqueue reply classification
+  // Enqueue reply classification (outside transaction — pg-boss is separate)
   if (deps?.enqueueReplyClassify) {
     await deps.enqueueReplyClassify({
       runId: `reply.classify:${event.id}`,
