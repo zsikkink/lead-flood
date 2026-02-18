@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import {
   ErrorResponseSchema,
+  type ReplyClassifyJobPayload,
   TrengoWebhookPayloadSchema,
   TrengoWebhookResponseSchema,
 } from '@lead-flood/contracts';
@@ -10,7 +11,7 @@ import { processTrengoWebhook } from './webhook.service.js';
 
 export interface WebhookRouteDependencies {
   trengoWebhookSecret: string;
-  enqueueReplyClassify?: ((payload: import('@lead-flood/contracts').ReplyClassifyJobPayload) => Promise<void>) | undefined;
+  enqueueReplyClassify?: ((payload: ReplyClassifyJobPayload) => Promise<void>) | undefined;
 }
 
 function verifyTrengoSignature(

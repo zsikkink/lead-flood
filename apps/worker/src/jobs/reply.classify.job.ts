@@ -48,7 +48,7 @@ export async function handleReplyClassifyJob(
   job: Job<ReplyClassifyJobPayload>,
   deps: ReplyClassifyJobDependencies,
 ): Promise<void> {
-  const { runId, correlationId, feedbackEventId, replyText, leadId, messageSendId } = job.data;
+  const { runId, correlationId, feedbackEventId, replyText, leadId } = job.data;
 
   logger.info(
     { jobId: job.id, queue: job.name, runId, correlationId: correlationId ?? job.id, feedbackEventId, leadId },

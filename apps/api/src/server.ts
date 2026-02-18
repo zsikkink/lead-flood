@@ -18,6 +18,7 @@ import {
   type LoginResponse,
   type JobStatus,
   type LeadStatus,
+  type ReplyClassifyJobPayload,
   ReadyResponseSchema,
 } from '@lead-flood/contracts';
 
@@ -86,7 +87,7 @@ export interface BuildServerOptions {
   enqueueMessageSend?: (payload: MessagingSendJobPayload) => Promise<void>;
   enqueueMessageGenerate?: ((payload: MessageGenerateJobPayload) => Promise<void>) | undefined;
   enqueueAnalyticsRollup?: ((payload: AnalyticsRollupJobPayload) => Promise<void>) | undefined;
-  enqueueReplyClassify?: ((payload: import('@lead-flood/contracts').ReplyClassifyJobPayload) => Promise<void>) | undefined;
+  enqueueReplyClassify?: ((payload: ReplyClassifyJobPayload) => Promise<void>) | undefined;
   trengoWebhookSecret?: string | undefined;
   getLeadById: (leadId: string) => Promise<LeadRecord | null>;
   listLeads: (query: ListLeadsQuery) => Promise<ListLeadsResponse>;
