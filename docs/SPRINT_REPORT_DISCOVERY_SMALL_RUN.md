@@ -60,7 +60,7 @@ pnpm discovery:seed
 
 # 3) Run worker against real SerpAPI with bounded processing
 DISCOVERY_RUN_MAX_TASKS=40 \
-SERPAPI_API_KEY=REAL_KEY \
+SERPAPI_API_KEY=<your-serpapi-key> \
 pnpm --filter @lead-flood/worker dev
 ```
 
@@ -191,7 +191,7 @@ pnpm discovery:seed
 # 2) Run bounded worker with maps zoom override
 DISCOVERY_RUN_MAX_TASKS=40 \
 DISCOVERY_MAPS_ZOOM=13 \
-SERPAPI_API_KEY=REAL_KEY \
+SERPAPI_API_KEY=<your-serpapi-key> \
 pnpm --filter @lead-flood/worker dev
 ```
 

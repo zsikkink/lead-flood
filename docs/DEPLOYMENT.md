@@ -100,6 +100,55 @@ pnpm db:verify:prod
 pnpm db:prisma:sync
 ```
 
+## Read-Only Dashboard Mode (Vercel Web + Supabase)
+
+Discovery console pages (`/discovery`) read directly from Supabase via RLS and create job requests in `public.job_requests`.
+
+Web env (Vercel):
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+Worker env:
+
+- `DATABASE_URL` (Supabase Postgres URL with `sslmode=require`)
+- `SERPAPI_DISCOVERY_ENABLED=true`
+- `SERPAPI_API_KEY`
+- `JOB_REQUEST_POLL_MS` / `JOB_REQUEST_MAX_PER_TICK` / `JOB_REQUEST_WORKER_ID` (optional)
+
+Admin promotion SQL (run in Supabase SQL editor):
+
+```sql
+insert into public.app_admins (user_id)
+values ('<auth.users.id>')
+on conflict (user_id) do nothing;
+```
+
+Job request lifecycle:
+
+1. UI inserts `public.job_requests` (`DISCOVERY_SEED` or `DISCOVERY_RUN`).
+2. Worker claims `PENDING` rows with `FOR UPDATE SKIP LOCKED`.
+3. Worker executes and writes telemetry to `public.job_runs`.
+4. Worker marks `job_requests` terminal status (`SUCCESS`/`FAILED`/`CANCELED`).
+
+Manual sanity check (SQL, no UI):
+
+```sql
+insert into public.job_requests (requested_by, request_type, params_json, idempotency_key)
+values (
+  '<auth.users.id>',
+  'DISCOVERY_RUN',
+  '{"maxTasks":20}'::jsonb,
+  'manual:discovery-run:test'
+)
+on conflict (idempotency_key) where idempotency_key is not null do nothing;
+
+select id, request_type, status, claimed_by, job_run_id, error_text, updated_at
+from public.job_requests
+order by id desc
+limit 20;
+```
+
 ## Data Migration: Local -> Remote
 
 Use `pnpm db:push:local-to-remote` to move existing local development data into the remote Supabase database.

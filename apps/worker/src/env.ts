@@ -132,6 +132,9 @@ const WorkerEnvSchema = z.object({
   DISCOVERY_MAX_TASK_ATTEMPTS: z.coerce.number().int().min(1).default(5),
   DISCOVERY_BACKOFF_BASE_SECONDS: z.coerce.number().int().min(1).default(30),
   DISCOVERY_RUN_MAX_TASKS: z.coerce.number().int().min(1).optional(),
+  JOB_REQUEST_POLL_MS: z.coerce.number().int().min(250).default(5000),
+  JOB_REQUEST_MAX_PER_TICK: z.coerce.number().int().min(1).max(50).default(1),
+  JOB_REQUEST_WORKER_ID: optionalNonEmptyString(),
 });
 
 export type WorkerEnv = z.infer<typeof WorkerEnvSchema>;

@@ -84,7 +84,7 @@ pnpm discovery:seed
 
 ```bash
 DISCOVERY_RUN_MAX_TASKS=40 \
-SERPAPI_API_KEY=REAL_KEY \
+SERPAPI_API_KEY=<your-serpapi-key> \
 pnpm --filter @lead-flood/worker dev
 ```
 

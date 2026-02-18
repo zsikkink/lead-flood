@@ -84,6 +84,35 @@ pnpm dev
 - Mailhog UI: `http://localhost:8025`
 - Postgres: `localhost:5434`
 
+## Discovery Console (Read-Only Supabase Mode)
+
+`/discovery` can run without API dependency when web is configured with Supabase browser keys and worker is running against the same DB.
+
+Required web env:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+Required worker env:
+
+- `DATABASE_URL` (Supabase Postgres, `sslmode=require`)
+- `SERPAPI_DISCOVERY_ENABLED=true`
+- `SERPAPI_API_KEY`
+
+Promote an auth user to discovery admin:
+
+```sql
+insert into public.app_admins (user_id)
+values ('<auth.users.id>')
+on conflict (user_id) do nothing;
+```
+
+Job flow:
+
+1. UI inserts `public.job_requests`.
+2. Worker dispatcher claims `PENDING` rows and executes seed/run.
+3. Worker writes telemetry into `public.job_runs` and updates `job_requests.status`.
+
 ## Test and Quality Commands
 
 ```bash

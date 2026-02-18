@@ -103,6 +103,7 @@ import {
   handleScoringComputeJob,
   type ScoringComputeJobPayload,
 } from './jobs/scoring.compute.job.js';
+import { buildDefaultWorkerId, startJobRequestDispatcher } from './job-requests/dispatcher.js';
 import { WhatsAppRateLimiter } from './messaging/rate-limiter.js';
 import { dispatchPendingOutboxEvents } from './outbox-dispatcher.js';
 import { ensureWorkerQueues, HEARTBEAT_QUEUE_NAME } from './queues.js';
@@ -170,6 +171,7 @@ async function main(): Promise<void> {
     connectionString: env.DATABASE_URL,
     schema: env.PG_BOSS_SCHEMA,
   });
+  let stopJobRequestDispatcher: (() => void) | null = null;
 
   await boss.start();
   logger.info({}, 'Worker started');
@@ -264,6 +266,9 @@ async function main(): Promise<void> {
           runMaxTasks: env.DISCOVERY_RUN_MAX_TASKS ?? null,
           countries: discoveryRuntimeConfig.countries,
           languages: discoveryRuntimeConfig.languages,
+          jobRequestPollMs: env.JOB_REQUEST_POLL_MS,
+          jobRequestMaxPerTick: env.JOB_REQUEST_MAX_PER_TICK,
+          jobRequestWorkerId: env.JOB_REQUEST_WORKER_ID ?? buildDefaultWorkerId(),
         },
         'Discovery search-task pipeline configured',
       );
@@ -419,6 +424,16 @@ async function main(): Promise<void> {
         ...DISCOVERY_SEED_RETRY_OPTIONS,
       },
     );
+
+    const dispatcher = startJobRequestDispatcher({
+      logger,
+      config: discoveryRuntimeConfig,
+      provider: serpApiProvider,
+      pollMs: env.JOB_REQUEST_POLL_MS,
+      maxPerTick: env.JOB_REQUEST_MAX_PER_TICK,
+      workerId: env.JOB_REQUEST_WORKER_ID ?? buildDefaultWorkerId(),
+    });
+    stopJobRequestDispatcher = dispatcher.stop;
   }
 
   await registerWorker<EnrichmentRunJobPayload>(
@@ -539,6 +554,10 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutting down worker');
+    if (stopJobRequestDispatcher) {
+      stopJobRequestDispatcher();
+      stopJobRequestDispatcher = null;
+    }
     clearInterval(outboxInterval);
     await boss.stop({ graceful: true, timeout: 30_000 });
   };

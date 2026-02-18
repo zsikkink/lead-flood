@@ -12,18 +12,23 @@ export function getSupabaseBrowserClient(): SupabaseClient {
   }
 
   const env = getWebEnv();
+  const supabaseKey =
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    'development-placeholder';
+
   if (
     env.NEXT_PUBLIC_SUPABASE_URL === 'https://example.supabase.co' ||
-    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY === 'development-placeholder'
+    supabaseKey === 'development-placeholder'
   ) {
     throw new Error(
-      'Supabase auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.',
+      'Supabase auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.',
     );
   }
 
   supabaseClient = createClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
-    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    supabaseKey,
     {
       auth: {
         persistSession: true,
