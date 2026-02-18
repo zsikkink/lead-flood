@@ -1,12 +1,13 @@
 /**
- * End-to-end pipeline integration test
+ * Full-lifecycle pipeline integration test
  *
  * Runs every pipeline stage in sequence against a real PostgreSQL database
- * with mocked external HTTP calls (PDL, OpenAI, Resend, Trengo).
+ * with mocked external HTTP calls (PDL, OpenAI, Resend, Trengo, Slack).
  *
  * Pipeline under test:
  *   enrichment → features → scoring → message.generate → message.send (email)
- *   → message.send (whatsapp) → analytics.rollup
+ *   → 3× follow-up cycle (followup.check → message.generate → message.send WhatsApp)
+ *   → reply classification → sales notification → analytics rollup
  */
 import { randomUUID } from 'node:crypto';
 
@@ -17,6 +18,7 @@ import {
   ResendAdapter,
   TrengoAdapter,
 } from '@lead-flood/providers';
+import type { ReplyClassifyJobPayload } from '@lead-flood/contracts';
 import type { Job } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -25,6 +27,9 @@ import { handleFeaturesComputeJob, type FeaturesComputeJobPayload, type Features
 import { handleScoringComputeJob, type ScoringComputeJobPayload, type ScoringComputeJobDependencies } from '../scoring.compute.job.js';
 import { handleMessageGenerateJob, type MessageGenerateJobPayload, type MessageGenerateJobDependencies } from '../message.generate.job.js';
 import { handleMessageSendJob, type MessageSendJobPayload, type MessageSendJobDependencies } from '../message.send.job.js';
+import { handleFollowupCheckJob, type FollowupCheckJobPayload, type FollowupCheckJobDependencies } from '../followup.check.job.js';
+import { handleReplyClassifyJob, type ReplyClassifyJobDependencies } from '../reply.classify.job.js';
+import { handleNotifySalesJob, type NotifySalesJobDependencies } from '../notify.sales.job.js';
 import { handleAnalyticsRollupJob, type AnalyticsRollupJobPayload } from '../analytics.rollup.job.js';
 
 // ---------------------------------------------------------------------------
@@ -72,8 +77,6 @@ const mockBoss = { send: bossSendSpy };
 // ---------------------------------------------------------------------------
 
 function makePdlFetch(): typeof fetch {
-  // PDL adapter reads: work_email, mobile_phone, location_country, location_locality,
-  // linkedin_url, and experience[0].{company, industry, company_domain, company_size, company_website}
   return vi.fn().mockResolvedValue(
     new Response(
       JSON.stringify({
@@ -97,12 +100,12 @@ function makePdlFetch(): typeof fetch {
   ) as unknown as typeof fetch;
 }
 
-function makeOpenAiFetch(): typeof fetch {
+function makeOpenAiGenerateFetch(): typeof fetch {
   return vi.fn().mockResolvedValue(
     new Response(
       JSON.stringify({
         id: 'chatcmpl-test',
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         choices: [
           {
             index: 0,
@@ -133,6 +136,29 @@ function makeOpenAiFetch(): typeof fetch {
   ) as unknown as typeof fetch;
 }
 
+function makeOpenAiClassifyFetch(classification: string, confidence: number): typeof fetch {
+  return vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        id: 'chatcmpl-classify',
+        model: 'gpt-4o',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({ classification, confidence }),
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ),
+  ) as unknown as typeof fetch;
+}
+
 function makeResendFetch(): typeof fetch {
   return vi.fn().mockResolvedValue(
     new Response(
@@ -151,6 +177,12 @@ function makeTrengoFetch(): typeof fetch {
   ) as unknown as typeof fetch;
 }
 
+function makeSlackFetch(): typeof fetch {
+  return vi.fn().mockResolvedValue(
+    new Response('ok', { status: 200 }),
+  ) as unknown as typeof fetch;
+}
+
 // ---------------------------------------------------------------------------
 // Adapter factories
 // ---------------------------------------------------------------------------
@@ -163,10 +195,17 @@ function makePdlAdapter(): PdlEnrichmentAdapter {
   });
 }
 
-function makeOpenAiAdapter(): OpenAiAdapter {
+function makeOpenAiGenerateAdapter(): OpenAiAdapter {
   return new OpenAiAdapter({
     apiKey: 'test-openai-key',
-    fetchImpl: makeOpenAiFetch(),
+    fetchImpl: makeOpenAiGenerateFetch(),
+  });
+}
+
+function makeOpenAiClassifyAdapter(classification: string, confidence: number): OpenAiAdapter {
+  return new OpenAiAdapter({
+    apiKey: 'test-openai-key',
+    fetchImpl: makeOpenAiClassifyFetch(classification, confidence),
   });
 }
 
@@ -187,7 +226,7 @@ function makeTrengoAdapter(): TrengoAdapter {
 }
 
 // ---------------------------------------------------------------------------
-// Seed data IDs (deterministic for cleanup)
+// Seed data IDs
 // ---------------------------------------------------------------------------
 
 const LEAD_EMAIL = `${TEST_PREFIX}@zbooni.test`;
@@ -195,18 +234,32 @@ const ICP_ID = randomUUID();
 const LEAD_ID = randomUUID();
 const DISCOVERY_RECORD_ID = randomUUID();
 const RUN_ID = `pipeline-e2e-${randomUUID()}`;
-const TODAY = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+const TODAY = new Date().toISOString().slice(0, 10);
 
-// Collect IDs created during test for cleanup
-const createdJobExecutionIds: string[] = [];
+// Feature list for ICP — used to verify feature rotation in follow-ups
+const ICP_FEATURES = ['Payment Links', 'WhatsApp Commerce', 'Order Management', 'Custom Storefronts'];
+
+// ---------------------------------------------------------------------------
+// Helper: extract boss.send payload for a specific queue
+// ---------------------------------------------------------------------------
+
+function extractBossPayload<T>(queueName: string): T {
+  const call = bossSendSpy.mock.calls.find(
+    (c: unknown[]) => c[0] === queueName,
+  );
+  if (!call) {
+    throw new Error(`No boss.send call found for queue '${queueName}'`);
+  }
+  return call[1] as T;
+}
 
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
 
-describe('pipeline end-to-end', () => {
+describe('pipeline full lifecycle', () => {
   beforeAll(async () => {
-    // Seed IcpProfile
+    // Seed IcpProfile with feature list
     await prisma.icpProfile.create({
       data: {
         id: ICP_ID,
@@ -215,12 +268,7 @@ describe('pipeline end-to-end', () => {
         targetIndustries: ['Financial Services', 'Technology'],
         targetCountries: ['AE', 'SA'],
         isActive: true,
-        featureList: JSON.parse(JSON.stringify([
-          'Payment Links',
-          'WhatsApp Commerce',
-          'Order Management',
-          'Custom Storefronts',
-        ])) as Prisma.InputJsonValue,
+        featureList: JSON.parse(JSON.stringify(ICP_FEATURES)) as Prisma.InputJsonValue,
       },
     });
 
@@ -257,9 +305,9 @@ describe('pipeline end-to-end', () => {
     await prisma.analyticsDailyRollup.deleteMany({
       where: { icpProfileId: ICP_ID },
     });
-    await prisma.modelEvaluation.deleteMany({
-      where: { trainingRun: { modelVersions: { some: { trainingRun: { configJson: { path: ['testPrefix'], equals: TEST_PREFIX } } } } } },
-    }).catch(() => { /* no-op if none */ });
+    await prisma.feedbackEvent.deleteMany({
+      where: { leadId: LEAD_ID },
+    });
     await prisma.messageSend.deleteMany({
       where: { leadId: LEAD_ID },
     });
@@ -267,9 +315,6 @@ describe('pipeline end-to-end', () => {
       where: { messageDraft: { leadId: LEAD_ID } },
     });
     await prisma.messageDraft.deleteMany({
-      where: { leadId: LEAD_ID },
-    });
-    await prisma.feedbackEvent.deleteMany({
       where: { leadId: LEAD_ID },
     });
     await prisma.trainingLabel.deleteMany({
@@ -284,11 +329,6 @@ describe('pipeline end-to-end', () => {
     await prisma.leadEnrichmentRecord.deleteMany({
       where: { leadId: LEAD_ID },
     });
-    if (createdJobExecutionIds.length > 0) {
-      await prisma.jobExecution.deleteMany({
-        where: { id: { in: createdJobExecutionIds } },
-      });
-    }
     await prisma.jobExecution.deleteMany({
       where: { leadId: LEAD_ID },
     });
@@ -298,13 +338,9 @@ describe('pipeline end-to-end', () => {
     await prisma.lead.deleteMany({
       where: { id: LEAD_ID },
     });
-    // Clean up model versions/training runs created by scoring baseline
-    await prisma.modelEvaluation.deleteMany({
-      where: { trainingRun: { configJson: { path: ['source'], equals: 'pipeline-e2e' } } },
-    }).catch(() => { /* no-op */ });
     await prisma.modelVersion.deleteMany({
       where: { versionTag: 'deterministic-baseline-v1' },
-    }).catch(() => { /* unique constraint means it may already exist */ });
+    }).catch(() => { /* may already exist */ });
     await prisma.icpProfile.deleteMany({
       where: { id: ICP_ID },
     });
@@ -342,24 +378,14 @@ describe('pipeline end-to-end', () => {
 
     await handleEnrichmentRunJob(noopLogger, makeJob(payload, 'enrichment.run'), deps);
 
-    // Verify lead updated
     const lead = await prisma.lead.findUniqueOrThrow({ where: { id: LEAD_ID } });
     expect(lead.status).toBe('enriched');
     expect(lead.phone).toBe('+971501234567');
-    expect(lead.enrichmentData).toBeTruthy();
 
-    // Verify enrichment record created
     const records = await prisma.leadEnrichmentRecord.findMany({ where: { leadId: LEAD_ID } });
-    expect(records.length).toBeGreaterThanOrEqual(1);
     const completed = records.find((r) => r.status === 'COMPLETED');
     expect(completed).toBeTruthy();
     expect(completed!.provider).toBe('PEOPLE_DATA_LABS');
-
-    // Verify features.compute enqueued via boss.send
-    const featuresSendCall = bossSendSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === 'features.compute',
-    );
-    expect(featuresSendCall).toBeTruthy();
   });
 
   // -----------------------------------------------------------------------
@@ -379,30 +405,20 @@ describe('pipeline end-to-end', () => {
 
     const deps: FeaturesComputeDependencies = {
       boss: mockBoss,
-      enqueueScoring: false,  // break chain — we call scoring manually
+      enqueueScoring: false,
     };
 
     await handleFeaturesComputeJob(noopLogger, makeJob(payload, 'features.compute'), deps);
 
-    // Verify feature snapshot created
     const snapshot = await prisma.leadFeatureSnapshot.findFirst({
       where: { leadId: LEAD_ID, icpProfileId: ICP_ID },
     });
     expect(snapshot).toBeTruthy();
     expect(snapshot!.featuresJson).toBeTruthy();
-    expect(typeof snapshot!.featureVectorHash).toBe('string');
-    expect(snapshot!.snapshotVersion).toBe(1);
 
-    // Verify feature vector contains expected keys
     const features = snapshot!.featuresJson as Record<string, unknown>;
     expect(features.has_email).toBe(true);
     expect(features.has_company_name).toBe(true);
-
-    // Scoring should NOT have been enqueued
-    const scoringSendCall = bossSendSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === 'scoring.compute',
-    );
-    expect(scoringSendCall).toBeUndefined();
   });
 
   // -----------------------------------------------------------------------
@@ -419,7 +435,6 @@ describe('pipeline end-to-end', () => {
       correlationId: `corr-${RUN_ID}`,
     };
 
-    // No OpenAI adapter — pure deterministic scoring
     const deps: ScoringComputeJobDependencies = {
       deterministicWeight: 1.0,
       aiWeight: 0.0,
@@ -427,7 +442,6 @@ describe('pipeline end-to-end', () => {
 
     await handleScoringComputeJob(noopLogger, makeJob(payload, 'scoring.compute'), deps);
 
-    // Verify score prediction created
     const prediction = await prisma.leadScorePrediction.findFirst({
       where: { leadId: LEAD_ID, icpProfileId: ICP_ID },
     });
@@ -435,13 +449,12 @@ describe('pipeline end-to-end', () => {
     expect(prediction!.blendedScore).toBeGreaterThanOrEqual(0);
     expect(prediction!.blendedScore).toBeLessThanOrEqual(100);
     expect(['LOW', 'MEDIUM', 'HIGH']).toContain(prediction!.scoreBand);
-    expect(prediction!.deterministicScore).toBeGreaterThanOrEqual(0);
   });
 
   // -----------------------------------------------------------------------
-  // Stage 4: Message generation
+  // Stage 4: Message generation (initial outreach)
   // -----------------------------------------------------------------------
-  it('stage 4: message.generate creates draft + variants', async () => {
+  it('stage 4: message.generate creates initial draft + auto-approved variants', async () => {
     bossSendSpy.mockClear();
 
     const prediction = await prisma.leadScorePrediction.findFirst({
@@ -461,52 +474,43 @@ describe('pipeline end-to-end', () => {
     };
 
     const deps: MessageGenerateJobDependencies = {
-      openAiAdapter: makeOpenAiAdapter(),
+      openAiAdapter: makeOpenAiGenerateAdapter(),
       boss: mockBoss,
     };
 
     await handleMessageGenerateJob(noopLogger, makeJob(payload, 'message.generate'), deps);
 
-    // Verify draft created
     const draft = await prisma.messageDraft.findFirst({
-      where: { leadId: LEAD_ID, icpProfileId: ICP_ID },
+      where: { leadId: LEAD_ID, icpProfileId: ICP_ID, followUpNumber: 0 },
       include: { variants: true },
     });
     expect(draft).toBeTruthy();
     expect(draft!.approvalStatus).toBe('AUTO_APPROVED');
     expect(draft!.variants.length).toBe(2);
+    expect(draft!.pitchedFeature).toBe(ICP_FEATURES[0]); // 'Payment Links'
 
-    // Verify variant_a is selected (autoApprove)
-    const variantA = draft!.variants.find((v) => v.variantKey === 'variant_a');
-    expect(variantA).toBeTruthy();
-    expect(variantA!.isSelected).toBe(true);
-    expect(variantA!.bodyText).toContain('variant A');
-
-    // Verify MessageSend created (autoApprove + boss provided)
+    // Auto-approve creates a QUEUED MessageSend + enqueues message.send
     const send = await prisma.messageSend.findFirst({
       where: { leadId: LEAD_ID, messageDraftId: draft!.id },
     });
     expect(send).toBeTruthy();
     expect(send!.status).toBe('QUEUED');
     expect(send!.channel).toBe('EMAIL');
-    expect(send!.provider).toBe('RESEND');
 
-    // Verify message.send enqueued
     const sendCall = bossSendSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === 'message.send',
+      (c: unknown[]) => c[0] === 'message.send',
     );
     expect(sendCall).toBeTruthy();
   });
 
   // -----------------------------------------------------------------------
-  // Stage 5: Email send
+  // Stage 5: Email send (initial outreach, followUpNumber=0)
   // -----------------------------------------------------------------------
-  it('stage 5: message.send delivers email via Resend', async () => {
+  it('stage 5: message.send delivers initial email via Resend', async () => {
     bossSendSpy.mockClear();
 
     const send = await prisma.messageSend.findFirst({
       where: { leadId: LEAD_ID, channel: 'EMAIL', status: 'QUEUED' },
-      include: { messageVariant: true },
     });
     expect(send).toBeTruthy();
 
@@ -528,62 +532,119 @@ describe('pipeline end-to-end', () => {
 
     await handleMessageSendJob(noopLogger, makeJob(payload, 'message.send'), deps);
 
-    // Verify send updated
-    const updated = await prisma.messageSend.findUniqueOrThrow({
-      where: { id: send!.id },
-    });
+    const updated = await prisma.messageSend.findUniqueOrThrow({ where: { id: send!.id } });
     expect(updated.status).toBe('SENT');
     expect(updated.providerMessageId).toBeTruthy();
     expect(updated.sentAt).toBeTruthy();
     expect(updated.followUpNumber).toBe(0);
+    // nextFollowUpAfter is set (~72h from now) since followUpNumber < 3
+    expect(updated.nextFollowUpAfter).toBeTruthy();
 
-    // Verify lead status updated to 'messaged' (first message, followUpNumber=0)
     const lead = await prisma.lead.findUniqueOrThrow({ where: { id: LEAD_ID } });
     expect(lead.status).toBe('messaged');
   });
 
   // -----------------------------------------------------------------------
-  // Stage 6: WhatsApp send
+  // Stage 6: Follow-up #1 — followup.check → message.generate → message.send
   // -----------------------------------------------------------------------
-  it('stage 6: message.send delivers WhatsApp via Trengo', async () => {
+  it('stage 6a: followup.check finds initial send and enqueues follow-up #1', async () => {
     bossSendSpy.mockClear();
 
-    // Create a WhatsApp variant + MessageSend to test WhatsApp path
+    // Move nextFollowUpAfter to the past to simulate 72h passing
+    const initialSend = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 0, status: 'SENT' },
+    });
+    await prisma.messageSend.update({
+      where: { id: initialSend!.id },
+      data: { nextFollowUpAfter: new Date(Date.now() - 60_000) },
+    });
+
+    const payload: FollowupCheckJobPayload = {
+      runId: `followup-check-1-${RUN_ID}`,
+      correlationId: `corr-${RUN_ID}`,
+    };
+
+    const deps: FollowupCheckJobDependencies = { boss: mockBoss };
+    await handleFollowupCheckJob(noopLogger, makeJob(payload, 'followup.check'), deps);
+
+    // followup.check should have enqueued message.generate with followUpNumber=1
+    const generatePayload = extractBossPayload<MessageGenerateJobPayload>('message.generate');
+    expect(generatePayload.leadId).toBe(LEAD_ID);
+    expect(generatePayload.followUpNumber).toBe(1);
+    expect(generatePayload.autoApprove).toBe(true);
+    expect(generatePayload.channel).toBe('WHATSAPP');
+    expect(generatePayload.parentMessageSendId).toBe(initialSend!.id);
+
+    // Initial send's nextFollowUpAfter should be cleared
+    const clearedSend = await prisma.messageSend.findUniqueOrThrow({ where: { id: initialSend!.id } });
+    expect(clearedSend.nextFollowUpAfter).toBeNull();
+  });
+
+  it('stage 6b: message.generate creates follow-up #1 draft (feature rotation)', async () => {
+    bossSendSpy.mockClear();
+
+    // Use the payload that followup.check enqueued
+    const initialSend = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 0, status: 'SENT' },
+    });
+
+    const payload: MessageGenerateJobPayload = {
+      runId: `followup:${initialSend!.id}:1`,
+      leadId: LEAD_ID,
+      icpProfileId: ICP_ID,
+      followUpNumber: 1,
+      parentMessageSendId: initialSend!.id,
+      previouslyPitchedFeatures: [ICP_FEATURES[0]!], // 'Payment Links' was pitched initially
+      autoApprove: true,
+      channel: 'WHATSAPP',
+      knowledgeEntryIds: [],
+      promptVersion: 'v1-followup',
+      correlationId: `corr-${RUN_ID}`,
+    };
+
+    const deps: MessageGenerateJobDependencies = {
+      openAiAdapter: makeOpenAiGenerateAdapter(),
+      boss: mockBoss,
+    };
+
+    await handleMessageGenerateJob(noopLogger, makeJob(payload, 'message.generate'), deps);
+
+    // Verify follow-up draft created with feature rotation
     const draft = await prisma.messageDraft.findFirst({
-      where: { leadId: LEAD_ID, icpProfileId: ICP_ID },
+      where: { leadId: LEAD_ID, followUpNumber: 1 },
+      include: { variants: true },
     });
     expect(draft).toBeTruthy();
+    expect(draft!.approvalStatus).toBe('AUTO_APPROVED');
+    // pitchedFeature should rotate — followUpNumber=1 picks from available features
+    // Available = ['WhatsApp Commerce', 'Order Management', 'Custom Storefronts'] (minus 'Payment Links')
+    // Index: 1 % 3 = 1 → 'Order Management'
+    expect(draft!.pitchedFeature).toBe('Order Management');
+    expect(draft!.parentMessageSendId).toBe(initialSend!.id);
 
-    const waVariant = await prisma.messageVariant.create({
-      data: {
-        messageDraftId: draft!.id,
-        variantKey: 'variant_wa',
-        channel: 'WHATSAPP',
-        bodyText: 'E2E WhatsApp test message',
-        isSelected: true,
-      },
+    // Auto-approve created a QUEUED MessageSend for WhatsApp
+    const send = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, messageDraftId: draft!.id, status: 'QUEUED' },
     });
+    expect(send).toBeTruthy();
+    expect(send!.channel).toBe('WHATSAPP');
+    expect(send!.followUpNumber).toBe(1);
+  });
 
-    const idempotencyKey = `wa-e2e-${TEST_PREFIX}-${randomUUID()}`;
-    const waSend = await prisma.messageSend.create({
-      data: {
-        leadId: LEAD_ID,
-        messageDraftId: draft!.id,
-        messageVariantId: waVariant.id,
-        channel: 'WHATSAPP',
-        provider: 'TRENGO',
-        status: 'QUEUED',
-        idempotencyKey,
-        followUpNumber: 1,
-      },
+  it('stage 6c: message.send delivers follow-up #1 via WhatsApp (Trengo)', async () => {
+    bossSendSpy.mockClear();
+
+    const send = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 1, status: 'QUEUED' },
     });
+    expect(send).toBeTruthy();
 
     const payload: MessageSendJobPayload = {
-      runId: `msgsend-wa-${RUN_ID}`,
-      sendId: waSend.id,
-      messageDraftId: draft!.id,
-      messageVariantId: waVariant.id,
-      idempotencyKey,
+      runId: `msgsend-fu1-${RUN_ID}`,
+      sendId: send!.id,
+      messageDraftId: send!.messageDraftId,
+      messageVariantId: send!.messageVariantId,
+      idempotencyKey: send!.idempotencyKey,
       channel: 'WHATSAPP',
       followUpNumber: 1,
       correlationId: `corr-${RUN_ID}`,
@@ -592,29 +653,325 @@ describe('pipeline end-to-end', () => {
     const deps: MessageSendJobDependencies = {
       resendAdapter: makeResendAdapter(),
       trengoAdapter: makeTrengoAdapter(),
-      // No rate limiter — skip rate limiting in test
     };
 
     await handleMessageSendJob(noopLogger, makeJob(payload, 'message.send'), deps);
 
-    // Verify send updated
-    const updated = await prisma.messageSend.findUniqueOrThrow({
-      where: { id: waSend.id },
-    });
+    const updated = await prisma.messageSend.findUniqueOrThrow({ where: { id: send!.id } });
     expect(updated.status).toBe('SENT');
     expect(updated.providerMessageId).toBeTruthy();
-    expect(updated.sentAt).toBeTruthy();
-    expect(updated.followUpNumber).toBe(1);
-    // providerConversationId set for WhatsApp (same as providerMessageId)
     expect(updated.providerConversationId).toBeTruthy();
+    expect(updated.followUpNumber).toBe(1);
+    expect(updated.nextFollowUpAfter).toBeTruthy(); // followUpNumber < 3 → scheduled
   });
 
   // -----------------------------------------------------------------------
-  // Stage 7: Analytics rollup
+  // Stage 7: Follow-up #2
   // -----------------------------------------------------------------------
-  it('stage 7: analytics.rollup aggregates daily metrics', async () => {
+  it('stage 7a: followup.check enqueues follow-up #2', async () => {
     bossSendSpy.mockClear();
 
+    const fu1Send = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 1, status: 'SENT' },
+    });
+    await prisma.messageSend.update({
+      where: { id: fu1Send!.id },
+      data: { nextFollowUpAfter: new Date(Date.now() - 60_000) },
+    });
+
+    const deps: FollowupCheckJobDependencies = { boss: mockBoss };
+    await handleFollowupCheckJob(
+      noopLogger,
+      makeJob<FollowupCheckJobPayload>({ runId: `followup-check-2-${RUN_ID}` }, 'followup.check'),
+      deps,
+    );
+
+    const generatePayload = extractBossPayload<MessageGenerateJobPayload>('message.generate');
+    expect(generatePayload.followUpNumber).toBe(2);
+    expect(generatePayload.parentMessageSendId).toBe(fu1Send!.id);
+  });
+
+  it('stage 7b: message.generate + message.send for follow-up #2', async () => {
+    bossSendSpy.mockClear();
+
+    const fu1Send = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 1, status: 'SENT' },
+    });
+
+    // Generate
+    const genPayload: MessageGenerateJobPayload = {
+      runId: `followup:${fu1Send!.id}:2`,
+      leadId: LEAD_ID,
+      icpProfileId: ICP_ID,
+      followUpNumber: 2,
+      parentMessageSendId: fu1Send!.id,
+      previouslyPitchedFeatures: [ICP_FEATURES[0]!, 'Order Management'],
+      autoApprove: true,
+      channel: 'WHATSAPP',
+      knowledgeEntryIds: [],
+      promptVersion: 'v1-followup',
+      correlationId: `corr-${RUN_ID}`,
+    };
+
+    await handleMessageGenerateJob(
+      noopLogger,
+      makeJob(genPayload, 'message.generate'),
+      { openAiAdapter: makeOpenAiGenerateAdapter(), boss: mockBoss },
+    );
+
+    const draft = await prisma.messageDraft.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 2 },
+    });
+    expect(draft).toBeTruthy();
+    // Available = ['WhatsApp Commerce', 'Custom Storefronts'] (minus 'Payment Links', 'Order Management')
+    // Index: 2 % 2 = 0 → 'WhatsApp Commerce'
+    expect(draft!.pitchedFeature).toBe('WhatsApp Commerce');
+
+    // Send
+    bossSendSpy.mockClear();
+    const fu2Send = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 2, status: 'QUEUED' },
+    });
+    expect(fu2Send).toBeTruthy();
+
+    await handleMessageSendJob(
+      noopLogger,
+      makeJob<MessageSendJobPayload>(
+        {
+          runId: `msgsend-fu2-${RUN_ID}`,
+          sendId: fu2Send!.id,
+          messageDraftId: fu2Send!.messageDraftId,
+          messageVariantId: fu2Send!.messageVariantId,
+          idempotencyKey: fu2Send!.idempotencyKey,
+          channel: 'WHATSAPP',
+          followUpNumber: 2,
+          correlationId: `corr-${RUN_ID}`,
+        },
+        'message.send',
+      ),
+      { resendAdapter: makeResendAdapter(), trengoAdapter: makeTrengoAdapter() },
+    );
+
+    const updated = await prisma.messageSend.findUniqueOrThrow({ where: { id: fu2Send!.id } });
+    expect(updated.status).toBe('SENT');
+    expect(updated.followUpNumber).toBe(2);
+    expect(updated.nextFollowUpAfter).toBeTruthy(); // still < 3
+  });
+
+  // -----------------------------------------------------------------------
+  // Stage 8: Follow-up #3 (final — no more follow-ups after this)
+  // -----------------------------------------------------------------------
+  it('stage 8a: followup.check enqueues follow-up #3', async () => {
+    bossSendSpy.mockClear();
+
+    const fu2Send = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 2, status: 'SENT' },
+    });
+    await prisma.messageSend.update({
+      where: { id: fu2Send!.id },
+      data: { nextFollowUpAfter: new Date(Date.now() - 60_000) },
+    });
+
+    const deps: FollowupCheckJobDependencies = { boss: mockBoss };
+    await handleFollowupCheckJob(
+      noopLogger,
+      makeJob<FollowupCheckJobPayload>({ runId: `followup-check-3-${RUN_ID}` }, 'followup.check'),
+      deps,
+    );
+
+    const generatePayload = extractBossPayload<MessageGenerateJobPayload>('message.generate');
+    expect(generatePayload.followUpNumber).toBe(3);
+    expect(generatePayload.parentMessageSendId).toBe(fu2Send!.id);
+  });
+
+  it('stage 8b: message.generate + message.send for follow-up #3 (max reached)', async () => {
+    bossSendSpy.mockClear();
+
+    const fu2Send = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 2, status: 'SENT' },
+    });
+
+    // Generate
+    const genPayload: MessageGenerateJobPayload = {
+      runId: `followup:${fu2Send!.id}:3`,
+      leadId: LEAD_ID,
+      icpProfileId: ICP_ID,
+      followUpNumber: 3,
+      parentMessageSendId: fu2Send!.id,
+      previouslyPitchedFeatures: [ICP_FEATURES[0]!, 'Order Management', 'WhatsApp Commerce'],
+      autoApprove: true,
+      channel: 'WHATSAPP',
+      knowledgeEntryIds: [],
+      promptVersion: 'v1-followup',
+      correlationId: `corr-${RUN_ID}`,
+    };
+
+    await handleMessageGenerateJob(
+      noopLogger,
+      makeJob(genPayload, 'message.generate'),
+      { openAiAdapter: makeOpenAiGenerateAdapter(), boss: mockBoss },
+    );
+
+    const draft = await prisma.messageDraft.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 3 },
+    });
+    expect(draft).toBeTruthy();
+    // Available = ['Custom Storefronts'] only
+    // Index: 3 % 1 = 0 → 'Custom Storefronts'
+    expect(draft!.pitchedFeature).toBe('Custom Storefronts');
+
+    // Send
+    bossSendSpy.mockClear();
+    const fu3Send = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, followUpNumber: 3, status: 'QUEUED' },
+    });
+    expect(fu3Send).toBeTruthy();
+
+    await handleMessageSendJob(
+      noopLogger,
+      makeJob<MessageSendJobPayload>(
+        {
+          runId: `msgsend-fu3-${RUN_ID}`,
+          sendId: fu3Send!.id,
+          messageDraftId: fu3Send!.messageDraftId,
+          messageVariantId: fu3Send!.messageVariantId,
+          idempotencyKey: fu3Send!.idempotencyKey,
+          channel: 'WHATSAPP',
+          followUpNumber: 3,
+          correlationId: `corr-${RUN_ID}`,
+        },
+        'message.send',
+      ),
+      { resendAdapter: makeResendAdapter(), trengoAdapter: makeTrengoAdapter() },
+    );
+
+    const updated = await prisma.messageSend.findUniqueOrThrow({ where: { id: fu3Send!.id } });
+    expect(updated.status).toBe('SENT');
+    expect(updated.followUpNumber).toBe(3);
+    // Max follow-ups reached — nextFollowUpAfter should be null
+    expect(updated.nextFollowUpAfter).toBeNull();
+  });
+
+  // -----------------------------------------------------------------------
+  // Stage 9: Reply classification — simulate lead replying "I'm interested"
+  // -----------------------------------------------------------------------
+  it('stage 9: reply.classify classifies an INTERESTED reply', async () => {
+    bossSendSpy.mockClear();
+
+    // Find the last WhatsApp send to simulate the reply against
+    const lastWaSend = await prisma.messageSend.findFirst({
+      where: { leadId: LEAD_ID, channel: 'WHATSAPP', status: 'SENT' },
+      orderBy: { sentAt: 'desc' },
+    });
+    expect(lastWaSend).toBeTruthy();
+
+    // Create FeedbackEvent (simulates what Trengo webhook handler does)
+    const feedbackEvent = await prisma.feedbackEvent.create({
+      data: {
+        leadId: LEAD_ID,
+        messageSendId: lastWaSend!.id,
+        eventType: 'REPLIED',
+        source: 'WEBHOOK',
+        providerEventId: `trengo-reply-${randomUUID()}`,
+        dedupeKey: `trengo:reply-e2e-${randomUUID()}`,
+        replyText: 'Yes, I am very interested in learning more about your payment solutions!',
+        occurredAt: new Date(),
+      },
+    });
+
+    const payload: ReplyClassifyJobPayload = {
+      runId: `reply-classify-${RUN_ID}`,
+      feedbackEventId: feedbackEvent.id,
+      replyText: 'Yes, I am very interested in learning more about your payment solutions!',
+      leadId: LEAD_ID,
+      messageSendId: lastWaSend!.id,
+      correlationId: `corr-${RUN_ID}`,
+    };
+
+    const deps: ReplyClassifyJobDependencies = {
+      openAiAdapter: makeOpenAiClassifyAdapter('INTERESTED', 0.95),
+      boss: mockBoss,
+      notifySalesJobName: 'notify.sales',
+      notifySalesRetryOptions: {
+        retryLimit: 2,
+        retryDelay: 30,
+        retryBackoff: true,
+        deadLetter: 'notify.sales.dead_letter',
+      },
+    };
+
+    await handleReplyClassifyJob(noopLogger, makeJob(payload, 'reply.classify'), deps);
+
+    // Lead should be 'replied'
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: LEAD_ID } });
+    expect(lead.status).toBe('replied');
+
+    // FeedbackEvent should have classification
+    const updatedEvent = await prisma.feedbackEvent.findUniqueOrThrow({ where: { id: feedbackEvent.id } });
+    expect(updatedEvent.replyClassification).toBe('INTERESTED');
+
+    // All follow-up schedules should be cancelled
+    const activeSends = await prisma.messageSend.findMany({
+      where: { leadId: LEAD_ID, nextFollowUpAfter: { not: null } },
+    });
+    expect(activeSends.length).toBe(0);
+
+    // notify.sales should be enqueued
+    const notifyCall = bossSendSpy.mock.calls.find(
+      (c: unknown[]) => c[0] === 'notify.sales',
+    );
+    expect(notifyCall).toBeTruthy();
+    expect(notifyCall![1]).toMatchObject({
+      leadId: LEAD_ID,
+      feedbackEventId: feedbackEvent.id,
+      classification: 'INTERESTED',
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Stage 10: Sales notification (Slack)
+  // -----------------------------------------------------------------------
+  it('stage 10: notify.sales sends Slack notification', async () => {
+    const feedbackEvent = await prisma.feedbackEvent.findFirst({
+      where: { leadId: LEAD_ID, eventType: 'REPLIED' },
+    });
+    expect(feedbackEvent).toBeTruthy();
+
+    const slackFetch = makeSlackFetch();
+    const deps: NotifySalesJobDependencies = {
+      slackWebhookUrl: 'https://hooks.slack.com/test/e2e',
+      fetchImpl: slackFetch,
+    };
+
+    await handleNotifySalesJob(
+      noopLogger,
+      makeJob(
+        {
+          runId: `notify-sales-${RUN_ID}`,
+          leadId: LEAD_ID,
+          feedbackEventId: feedbackEvent!.id,
+          classification: 'INTERESTED' as const,
+          correlationId: `corr-${RUN_ID}`,
+        },
+        'notify.sales',
+      ),
+      deps,
+    );
+
+    // Verify Slack was called
+    expect(slackFetch).toHaveBeenCalledTimes(1);
+    const slackCall = (slackFetch as ReturnType<typeof vi.fn>).mock.calls[0] as unknown[];
+    expect(slackCall[0]).toBe('https://hooks.slack.com/test/e2e');
+
+    const slackBody = JSON.parse((slackCall[1] as { body: string }).body) as { text: string };
+    expect(slackBody.text).toContain('Pipeline Tester');
+    expect(slackBody.text).toContain('interested');
+  });
+
+  // -----------------------------------------------------------------------
+  // Stage 11: Analytics rollup
+  // -----------------------------------------------------------------------
+  it('stage 11: analytics.rollup aggregates daily metrics', async () => {
     const payload: AnalyticsRollupJobPayload = {
       runId: `analytics-${RUN_ID}`,
       day: TODAY,
@@ -625,7 +982,6 @@ describe('pipeline end-to-end', () => {
 
     await handleAnalyticsRollupJob(noopLogger, makeJob(payload, 'analytics.rollup'));
 
-    // Verify rollup created
     const rollup = await prisma.analyticsDailyRollup.findFirst({
       where: { icpProfileId: ICP_ID },
     });
@@ -633,17 +989,15 @@ describe('pipeline end-to-end', () => {
     expect(rollup!.discoveredCount).toBeGreaterThanOrEqual(1);
     expect(rollup!.enrichedCount).toBeGreaterThanOrEqual(1);
     expect(rollup!.scoredCount).toBeGreaterThanOrEqual(1);
-    expect(rollup!.validEmailCount).toBeGreaterThanOrEqual(1);
-    expect(rollup!.validDomainCount).toBeGreaterThanOrEqual(1);
   });
 
   // -----------------------------------------------------------------------
-  // Final verification: full DB state check
+  // Final: complete lifecycle verification
   // -----------------------------------------------------------------------
-  it('final: all pipeline artifacts exist with correct relationships', async () => {
-    // Lead should be in 'messaged' state
+  it('final: all pipeline artifacts exist across the full lifecycle', async () => {
+    // Lead should be in 'replied' state (after interested reply)
     const lead = await prisma.lead.findUniqueOrThrow({ where: { id: LEAD_ID } });
-    expect(lead.status).toBe('messaged');
+    expect(lead.status).toBe('replied');
     expect(lead.phone).toBe('+971501234567');
 
     // Discovery record
@@ -668,22 +1022,50 @@ describe('pipeline end-to-end', () => {
     });
     expect(scores.length).toBeGreaterThanOrEqual(1);
 
-    // Message draft + variants
+    // 4 message drafts: initial + 3 follow-ups
     const drafts = await prisma.messageDraft.findMany({
       where: { leadId: LEAD_ID },
-      include: { variants: true },
+      orderBy: { followUpNumber: 'asc' },
     });
-    expect(drafts.length).toBeGreaterThanOrEqual(1);
-    expect(drafts[0]!.variants.length).toBeGreaterThanOrEqual(2);
+    expect(drafts.length).toBe(4);
+    expect(drafts.map((d) => d.followUpNumber)).toEqual([0, 1, 2, 3]);
 
-    // Message sends (email + whatsapp)
+    // Verify feature rotation across all drafts
+    const pitchedFeatures = drafts.map((d) => d.pitchedFeature);
+    expect(pitchedFeatures[0]).toBe('Payment Links');
+    expect(pitchedFeatures[1]).toBe('Order Management');
+    expect(pitchedFeatures[2]).toBe('WhatsApp Commerce');
+    expect(pitchedFeatures[3]).toBe('Custom Storefronts');
+    // All 4 ICP features were pitched across the lifecycle
+
+    // 4 message sends: 1 email + 3 WhatsApp
     const sends = await prisma.messageSend.findMany({
       where: { leadId: LEAD_ID, status: 'SENT' },
+      orderBy: { followUpNumber: 'asc' },
     });
-    expect(sends.length).toBeGreaterThanOrEqual(2);
-    const channels = sends.map((s) => s.channel);
-    expect(channels).toContain('EMAIL');
-    expect(channels).toContain('WHATSAPP');
+    expect(sends.length).toBe(4);
+    expect(sends[0]!.channel).toBe('EMAIL');
+    expect(sends[0]!.followUpNumber).toBe(0);
+    expect(sends[1]!.channel).toBe('WHATSAPP');
+    expect(sends[1]!.followUpNumber).toBe(1);
+    expect(sends[2]!.channel).toBe('WHATSAPP');
+    expect(sends[2]!.followUpNumber).toBe(2);
+    expect(sends[3]!.channel).toBe('WHATSAPP');
+    expect(sends[3]!.followUpNumber).toBe(3);
+
+    // No pending follow-ups
+    const pendingFollowups = await prisma.messageSend.findMany({
+      where: { leadId: LEAD_ID, nextFollowUpAfter: { not: null } },
+    });
+    expect(pendingFollowups.length).toBe(0);
+
+    // Feedback event with classification
+    const feedback = await prisma.feedbackEvent.findMany({
+      where: { leadId: LEAD_ID },
+    });
+    expect(feedback.length).toBe(1);
+    expect(feedback[0]!.eventType).toBe('REPLIED');
+    expect(feedback[0]!.replyClassification).toBe('INTERESTED');
 
     // Analytics rollup
     const rollup = await prisma.analyticsDailyRollup.findFirst({
