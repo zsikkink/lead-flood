@@ -1,6 +1,7 @@
 'use client';
 
 import type { MessageApprovalStatus } from '@lead-flood/contracts';
+import { CheckCheck } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 import { CustomSelect } from '../../../src/components/custom-select.js';
@@ -18,9 +19,10 @@ const APPROVAL_OPTIONS = [
 ];
 
 export default function MessagesPage() {
-  const { apiClient } = useAuth();
+  const { apiClient, user } = useAuth();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<MessageApprovalStatus | undefined>(undefined);
+  const [approving, setApproving] = useState(false);
 
   const drafts = useApiQuery(
     useCallback(
@@ -35,6 +37,31 @@ export default function MessagesPage() {
     [page, statusFilter],
   );
 
+  const handleAutoApproveAll = async () => {
+    if (!drafts.data) return;
+    const pendingDrafts = drafts.data.items.filter((d) => d.approvalStatus === 'PENDING');
+    if (pendingDrafts.length === 0) return;
+
+    setApproving(true);
+    const userId = user?.id ?? 'unknown';
+    try {
+      for (const draft of pendingDrafts) {
+        const firstVariant = draft.variants[0];
+        await apiClient.approveDraft(draft.id, {
+          approvedByUserId: userId,
+          selectedVariantId: firstVariant?.id,
+        });
+      }
+      drafts.refetch();
+    } catch {
+      // Individual failures are tolerable
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const pendingCount = drafts.data?.items.filter((d) => d.approvalStatus === 'PENDING').length ?? 0;
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -44,15 +71,28 @@ export default function MessagesPage() {
             {drafts.data ? `${drafts.data.total} drafts` : 'Loading...'}
           </p>
         </div>
-        <CustomSelect
-          value={statusFilter ?? ''}
-          onChange={(v) => {
-            setStatusFilter((v || undefined) as MessageApprovalStatus | undefined);
-            setPage(1);
-          }}
-          options={APPROVAL_OPTIONS}
-          placeholder="All statuses"
-        />
+        <div className="flex items-center gap-3">
+          {pendingCount > 0 ? (
+            <button
+              type="button"
+              disabled={approving}
+              onClick={handleAutoApproveAll}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-zbooni-green/20 px-3.5 py-2 text-xs font-semibold text-zbooni-green transition-colors hover:bg-zbooni-green/30 disabled:opacity-50"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              {approving ? 'Approving...' : `Approve All (${pendingCount})`}
+            </button>
+          ) : null}
+          <CustomSelect
+            value={statusFilter ?? ''}
+            onChange={(v) => {
+              setStatusFilter((v || undefined) as MessageApprovalStatus | undefined);
+              setPage(1);
+            }}
+            options={APPROVAL_OPTIONS}
+            placeholder="All statuses"
+          />
+        </div>
       </div>
 
       {drafts.error ? (

@@ -255,8 +255,7 @@ export function MessageDraftCard({ draft, onAction }: MessageDraftCardProps) {
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground/60">
-            Lead: <span className="font-mono">{draft.leadId.slice(0, 12)}...</span>
-            {' · '}{draft.variants.length} variant{draft.variants.length !== 1 ? 's' : ''}
+            {draft.variants.length} variant{draft.variants.length !== 1 ? 's' : ''}
             {' · '}{draft.generatedByModel}
           </p>
           {!expanded ? (

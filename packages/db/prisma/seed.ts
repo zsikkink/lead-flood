@@ -15,13 +15,20 @@ function hashPassword(password: string): string {
   return ['scrypt', '16384', '8', '1', salt, derived.toString('base64url')].join('$');
 }
 
+// All MENA countries as default target
+const MENA_COUNTRIES = [
+  'UAE', 'KSA', 'Egypt', 'Jordan', 'Bahrain', 'Kuwait', 'Oman', 'Qatar',
+  'Lebanon', 'Iraq', 'Morocco', 'Tunisia', 'Algeria', 'Libya', 'Yemen',
+  'Syria', 'Palestine', 'Sudan',
+];
+
 // ── 8 ICP Segments from Zbooni Sales Onboarding Deck ──────────
 const ICP_SEGMENTS = [
   {
     name: 'Luxury & High-Ticket Services',
     description: 'Yacht charters, exotic car rentals, private aviation, luxury travel designers, personal shoppers serving HNWIs',
     targetIndustries: ['Luxury Services', 'Yacht Charter', 'Private Aviation', 'Luxury Travel', 'Personal Shopping'],
-    targetCountries: ['UAE', 'KSA', 'Egypt', 'Jordan'],
+    targetCountries: MENA_COUNTRIES,
     minCompanySize: 5,
     maxCompanySize: 200,
     featureList: ['Large one-off payments (up to AED 1M per link)', 'Multiple payment methods (Amex, Apple Pay, Google Pay, PayPal)', 'Multi-MID support for failed transaction retries', 'Immediate live support via call or WhatsApp', 'Catalog (CShop) to pre-list services', 'CRM to track customer order history'],
@@ -31,7 +38,7 @@ const ICP_SEGMENTS = [
     name: 'Gifting, Corporate & Bespoke Experiences',
     description: 'Premium corporate gifting houses, curated gift box brands, high-end florists, experience gifting platforms',
     targetIndustries: ['Corporate Gifting', 'Florists', 'Gift Boxes', 'Experience Platforms', 'Bespoke Events'],
-    targetCountries: ['UAE', 'KSA'],
+    targetCountries: MENA_COUNTRIES,
     minCompanySize: 5,
     maxCompanySize: 300,
     featureList: ['Catalog (CShop) for pre-listing services', 'Live payment link editing', 'In-app discount creation', 'Promo code management', 'WhatsApp marketing campaigns via Zbooni verified number', 'Multiple payment methods'],
@@ -41,7 +48,7 @@ const ICP_SEGMENTS = [
     name: 'Events, Weddings & Experiential Operators',
     description: 'Wedding planners, event production agencies, exhibition organizers, pop-up markets, festival operators',
     targetIndustries: ['Wedding Planning', 'Event Production', 'Exhibitions', 'Pop-up Markets', 'Festivals'],
-    targetCountries: ['UAE', 'KSA', 'Egypt', 'Jordan'],
+    targetCountries: MENA_COUNTRIES,
     minCompanySize: 3,
     maxCompanySize: 500,
     featureList: ['End-to-end event marketing via WhatsApp', 'Ticketing solution', 'Catalog (CShop) for products/services', 'QR-based food ordering and payment', 'POS machine for in-person cards', 'Customer database for re-engagement', 'Master organizer dashboard', 'Promo codes'],
@@ -51,7 +58,7 @@ const ICP_SEGMENTS = [
     name: 'Home, Design & High-Value Contracting',
     description: 'Interior design studios, renovation & fit-out firms, architecture companies, premium maintenance groups',
     targetIndustries: ['Interior Design', 'Renovation', 'Architecture', 'Contracting', 'Landscape Design'],
-    targetCountries: ['UAE', 'KSA'],
+    targetCountries: MENA_COUNTRIES,
     minCompanySize: 5,
     maxCompanySize: 500,
     featureList: ['Large one-off payments (up to AED 1M)', 'Customizable milestone-based payment links', 'Easy reconciliation with VAT tracking', 'Customizable instant receipts', 'Catalog (CShop)', 'CRM with order history and notes', 'In-app discount creation'],
@@ -61,7 +68,7 @@ const ICP_SEGMENTS = [
     name: 'Boutique Hospitality & Short-Stay Operators',
     description: 'Boutique hotels, holiday home operators, serviced residences, property management with concierge/add-on services',
     targetIndustries: ['Boutique Hotels', 'Holiday Homes', 'Serviced Residences', 'Property Management', 'Hospitality'],
-    targetCountries: ['UAE', 'KSA'],
+    targetCountries: MENA_COUNTRIES,
     minCompanySize: 3,
     maxCompanySize: 200,
     featureList: ['Large one-off payments (up to AED 1M)', 'Partial payments (deposit/balance/add-ons)', 'International card acceptance', 'Multiple payment methods', 'Instant receipts', 'Easy reconciliation with VAT', 'Catalog for upsells via chat/QR', 'CRM for guest history'],
@@ -71,7 +78,7 @@ const ICP_SEGMENTS = [
     name: 'Premium Wellness & Longevity Clinics',
     description: 'Premium wellness clinics, aesthetic treatment centres, longevity/IV therapy clinics, advanced diagnostics',
     targetIndustries: ['Wellness Clinics', 'Aesthetic Medicine', 'Longevity', 'IV Therapy', 'Medical Tourism'],
-    targetCountries: ['UAE', 'KSA'],
+    targetCountries: MENA_COUNTRIES,
     minCompanySize: 5,
     maxCompanySize: 100,
     featureList: ['Staged or package-based payment links', 'Multiple payment methods (incl. Tabby, Tamara)', 'CRM for patient history and notes', 'Promo codes for campaigns/referrals', 'WhatsApp marketing campaigns', 'Instant receipts', 'International card acceptance'],
@@ -81,7 +88,7 @@ const ICP_SEGMENTS = [
     name: 'High-Ticket Coaching & Advisory',
     description: 'Executive coaches, business advisory firms, paid communities, masterminds, and membership programs',
     targetIndustries: ['Executive Coaching', 'Business Advisory', 'Masterminds', 'Memberships', 'Consulting'],
-    targetCountries: ['UAE', 'KSA', 'Egypt', 'Jordan'],
+    targetCountries: MENA_COUNTRIES,
     minCompanySize: 1,
     maxCompanySize: 50,
     featureList: ['Partial or staged payment links', 'International card acceptance', 'Multiple payment methods (incl. Tabby, Tamara)', 'Instant receipts', 'CRM for client history and enrolment', 'Promo codes for cohorts/referrals', 'WhatsApp marketing for re-engagement'],
@@ -91,7 +98,7 @@ const ICP_SEGMENTS = [
     name: 'Education & Training Providers',
     description: 'Private education institutes, professional training centres, bootcamps, certifications, cohort-based programs',
     targetIndustries: ['Private Education', 'Professional Training', 'Bootcamps', 'Certifications', 'Cohort Programs'],
-    targetCountries: ['UAE', 'KSA', 'Egypt', 'Jordan'],
+    targetCountries: MENA_COUNTRIES,
     minCompanySize: 5,
     maxCompanySize: 300,
     featureList: ['Multiple payment methods (incl. Tabby, Tamara)', 'Inventory limits for attendance', 'Instant receipts', 'Reconciliation with student/VAT tracking', 'CRM for student enrolment and notes', 'Promo codes for early-bird/partner discounts', 'WhatsApp campaigns for new cohorts'],
@@ -229,31 +236,23 @@ async function main(): Promise<void> {
         });
 
         const company = leadData.enrichmentData.companyName;
+        // Alternate between WhatsApp and Email — one channel per draft
+        const useWhatsApp = leadData.enrichmentData.whatsappUsage !== undefined;
+        const channel = useWhatsApp ? 'WHATSAPP' as const : 'EMAIL' as const;
+
         const variant = await prisma.messageVariant.create({
           data: {
             messageDraftId: draft.id,
             variantKey: 'A',
-            channel: 'EMAIL',
-            subject: `${leadData.firstName}, quick question about ${company}'s payment flow`,
-            bodyText: `Hi ${leadData.firstName},\n\nI noticed ${company} is doing great work in ${leadData.enrichmentData.industry}. We help businesses like yours collect payments faster through WhatsApp — branded links, instant confirmations, and multi-currency support.\n\nWould you be open to a 15-minute call this week?\n\nBest,\nZbooni Sales Team`,
+            channel,
+            subject: channel === 'EMAIL' ? `${leadData.firstName}, quick question about ${company}'s payment flow` : null,
+            bodyText: channel === 'WHATSAPP'
+              ? `Hi ${leadData.firstName}! I'm from Zbooni — we help businesses like ${company} collect payments directly through WhatsApp conversations. Would love to show you how it works. Free for a quick chat?`
+              : `Hi ${leadData.firstName},\n\nI noticed ${company} is doing great work in ${leadData.enrichmentData.industry}. We help businesses like yours collect payments faster through WhatsApp — branded links, instant confirmations, and multi-currency support.\n\nWould you be open to a 15-minute call this week?\n\nBest,\nZbooni Sales Team`,
             bodyHtml: null,
-            ctaText: 'Book a Demo',
+            ctaText: channel === 'EMAIL' ? 'Book a Demo' : null,
             qualityScore: 0.78 + Math.random() * 0.15,
             isSelected: approvalStatus === 'APPROVED',
-          },
-        });
-
-        await prisma.messageVariant.create({
-          data: {
-            messageDraftId: draft.id,
-            variantKey: 'B',
-            channel: 'WHATSAPP',
-            subject: null,
-            bodyText: `Hi ${leadData.firstName}! I'm from Zbooni — we help businesses like ${company} collect payments directly through WhatsApp conversations. Would love to show you how it works. Free for a quick chat?`,
-            bodyHtml: null,
-            ctaText: null,
-            qualityScore: 0.80 + Math.random() * 0.12,
-            isSelected: false,
           },
         });
 
@@ -264,8 +263,8 @@ async function main(): Promise<void> {
               leadId: lead.id,
               messageDraftId: draft.id,
               messageVariantId: variant.id,
-              channel: 'EMAIL',
-              provider: 'RESEND',
+              channel,
+              provider: channel === 'WHATSAPP' ? 'TRENGO' : 'RESEND',
               status: leadData.status === 'replied' ? 'REPLIED' : 'SENT',
               idempotencyKey: `seed-${lead.id}-${Date.now()}`,
               sentAt: new Date(Date.now() - 86400000 * (2 + Math.floor(Math.random() * 5))),
