@@ -1,7 +1,11 @@
 import type { SendMessageRequest } from '@lead-flood/contracts';
 import { prisma } from '@lead-flood/db';
 import type { ResendAdapter, TrengoAdapter } from '@lead-flood/providers';
+import type PgBoss from 'pg-boss';
 import type { Job, SendOptions } from 'pg-boss';
+
+import type { WhatsAppRateLimiter } from '../messaging/rate-limiter.js';
+import { computeNextFollowUpAfter } from '../utils/jitter.js';
 
 export const MESSAGE_SEND_JOB_NAME = 'message.send';
 export const MESSAGE_SEND_IDEMPOTENCY_KEY_PATTERN = 'message.send:${messageVariantId}';
@@ -20,6 +24,7 @@ export interface MessageSendJobPayload extends Pick<SendMessageRequest, 'message
   runId: string;
   sendId: string;
   channel: 'EMAIL' | 'WHATSAPP';
+  followUpNumber?: number | undefined;
   correlationId?: string;
 }
 
@@ -32,6 +37,8 @@ export interface MessageSendLogger {
 export interface MessageSendJobDependencies {
   resendAdapter: ResendAdapter;
   trengoAdapter: TrengoAdapter;
+  rateLimiter?: WhatsAppRateLimiter | undefined;
+  boss?: Pick<PgBoss, 'send'> | undefined;
 }
 
 export async function handleMessageSendJob(
@@ -61,7 +68,7 @@ export async function handleMessageSendJob(
       where: { id: sendId },
       include: {
         messageVariant: true,
-        lead: { select: { email: true, firstName: true, lastName: true } },
+        lead: { select: { id: true, email: true, phone: true, firstName: true, lastName: true } },
       },
     });
 
@@ -93,14 +100,24 @@ export async function handleMessageSendJob(
       });
 
       if (result.status === 'success') {
-        await prisma.messageSend.update({
-          where: { id: sendId },
-          data: {
-            status: 'SENT',
-            providerMessageId: result.providerMessageId,
-            sentAt: new Date(),
-          },
-        });
+        const followUpNumber = job.data.followUpNumber ?? 0;
+        const nextFollowUpAfter = followUpNumber < 3 ? computeNextFollowUpAfter() : null;
+
+        await prisma.$transaction([
+          prisma.messageSend.update({
+            where: { id: sendId },
+            data: {
+              status: 'SENT',
+              providerMessageId: result.providerMessageId,
+              sentAt: new Date(),
+              followUpNumber,
+              nextFollowUpAfter,
+            },
+          }),
+          ...(followUpNumber === 0
+            ? [prisma.lead.update({ where: { id: send.lead.id }, data: { status: 'messaged' } })]
+            : []),
+        ]);
 
         logger.info(
           { jobId: job.id, sendId, providerMessageId: result.providerMessageId },
@@ -119,20 +136,68 @@ export async function handleMessageSendJob(
         return;
       }
 
+      // Guard: phone number required for WhatsApp
+      if (!send.lead.phone) {
+        await markFailed(sendId, 'MISSING_PHONE', 'Lead has no phone number for WhatsApp delivery');
+        logger.error({ jobId: job.id, sendId, leadId: send.leadId }, 'Lead missing phone for WhatsApp');
+        return;
+      }
+
+      // Rate limit check
+      if (deps.rateLimiter) {
+        const rateCheck = await deps.rateLimiter.canSend();
+        if (!rateCheck.allowed) {
+          // Re-enqueue for next send window instead of failing
+          if (deps.boss && rateCheck.nextWindowAt) {
+            await deps.boss.send(MESSAGE_SEND_JOB_NAME, job.data, {
+              singletonKey: `message.send:${sendId}:deferred`,
+              startAfter: rateCheck.nextWindowAt,
+              ...MESSAGE_SEND_RETRY_OPTIONS,
+            });
+            logger.info(
+              {
+                jobId: job.id,
+                sendId,
+                reason: rateCheck.reason,
+                nextWindowAt: rateCheck.nextWindowAt.toISOString(),
+              },
+              'WhatsApp send rate-limited, re-enqueued for next window',
+            );
+          } else {
+            logger.warn(
+              { jobId: job.id, sendId, reason: rateCheck.reason },
+              'WhatsApp send rate-limited but no boss to re-enqueue',
+            );
+          }
+          return;
+        }
+      }
+
       const result = await deps.trengoAdapter.sendMessage({
-        to: send.lead.email,
+        to: send.lead.phone,
         bodyText: send.messageVariant.bodyText,
       });
 
       if (result.status === 'success') {
-        await prisma.messageSend.update({
-          where: { id: sendId },
-          data: {
-            status: 'SENT',
-            providerMessageId: result.providerMessageId,
-            sentAt: new Date(),
-          },
-        });
+        const followUpNumber = job.data.followUpNumber ?? 0;
+        const nextFollowUpAfter = followUpNumber < 3 ? computeNextFollowUpAfter() : null;
+
+        await prisma.$transaction([
+          prisma.messageSend.update({
+            where: { id: sendId },
+            data: {
+              status: 'SENT',
+              providerMessageId: result.providerMessageId,
+              providerConversationId: result.providerMessageId,
+              sentAt: new Date(),
+              followUpNumber,
+              nextFollowUpAfter,
+            },
+          }),
+          ...(followUpNumber === 0
+            ? [prisma.lead.update({ where: { id: send.lead.id }, data: { status: 'messaged' } })]
+            : []),
+        ]);
 
         logger.info(
           { jobId: job.id, sendId, providerMessageId: result.providerMessageId },
