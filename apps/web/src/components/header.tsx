@@ -1,0 +1,106 @@
+'use client';
+
+import { LogOut, Menu } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+
+import { useAuth } from '../hooks/use-auth.js';
+import { cn } from '../lib/utils.js';
+
+const MOBILE_NAV = [
+  { href: '/dashboard', label: 'Pipeline' },
+  { href: '/dashboard/leads', label: 'Leads' },
+  { href: '/dashboard/messages', label: 'Messages' },
+  { href: '/dashboard/icps', label: 'ICP Profiles' },
+  { href: '/dashboard/analytics', label: 'Analytics' },
+] as const;
+
+export function Header() {
+  const { user, logout } = useAuth();
+  const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Derive page title from pathname
+  const pageTitle =
+    pathname === '/dashboard'
+      ? 'Pipeline Overview'
+      : pathname.startsWith('/dashboard/leads/')
+        ? 'Lead Detail'
+        : pathname === '/dashboard/leads'
+          ? 'Leads'
+          : pathname === '/dashboard/messages'
+            ? 'Message Queue'
+            : pathname.startsWith('/dashboard/icps/')
+              ? 'ICP Profile'
+              : pathname === '/dashboard/icps'
+                ? 'ICP Profiles'
+                : pathname === '/dashboard/analytics'
+                  ? 'Analytics'
+                  : 'Dashboard';
+
+  return (
+    <header className="sticky top-0 z-30 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+      <div className="flex h-16 items-center justify-between px-4 lg:px-6">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="rounded-lg p-2 text-muted-foreground hover:bg-accent lg:hidden"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <h1 className="text-lg font-bold tracking-tight">{pageTitle}</h1>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {user ? (
+            <div className="flex items-center gap-2">
+              <div className="hidden items-center gap-2 sm:flex">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+                  {user.firstName.charAt(0)}{user.lastName.charAt(0)}
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  {user.firstName}
+                </span>
+              </div>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={logout}
+            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile nav */}
+      {mobileMenuOpen ? (
+        <nav className="border-t border-border/50 p-3 lg:hidden">
+          {MOBILE_NAV.map(({ href, label }) => {
+            const isActive =
+              href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  'block rounded-lg px-3 py-2 text-sm font-medium',
+                  isActive
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-accent/50',
+                )}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+      ) : null}
+    </header>
+  );
+}
