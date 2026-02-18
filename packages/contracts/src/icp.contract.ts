@@ -211,6 +211,8 @@ export const IcpStatusResponseSchema = z
   .strict();
 
 const IcpDebugDiscoveryProviderSchema = z.enum([
+  'BRAVE_SEARCH',
+  'GOOGLE_PLACES',
   'GOOGLE_SEARCH',
   'LINKEDIN_SCRAPE',
   'COMPANY_SEARCH_FREE',

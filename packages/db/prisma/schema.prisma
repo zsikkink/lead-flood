@@ -55,6 +55,8 @@ enum QualificationOperator {
 }
 
 enum DiscoveryProvider {
+  BRAVE_SEARCH
+  GOOGLE_PLACES
   GOOGLE_SEARCH
   LINKEDIN_SCRAPE
   COMPANY_SEARCH_FREE
@@ -168,6 +170,35 @@ enum ReplyClassification {
   NOT_INTERESTED
   OUT_OF_OFFICE
   UNSUBSCRIBE
+}
+
+enum SearchTaskType {
+  SERP_GOOGLE
+  SERP_GOOGLE_LOCAL
+  SERP_MAPS_LOCAL
+}
+
+enum SearchTaskStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+enum DiscoverySourceType {
+  DIRECTORY
+  SMB_SITE
+  SOCIAL
+  MARKETPLACE
+  UNKNOWN
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELED
 }
 
 model User {
@@ -318,11 +349,14 @@ model LeadDiscoveryRecord {
   icpProfileId     String
   icpProfile       IcpProfile          @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
   provider         DiscoveryProvider
+  providerSource   String?
+  providerConfidence Float?
   providerRecordId String
   providerCursor   String?
   queryHash        String
   status           DiscoveryRecordStatus @default(DISCOVERED)
   rawPayload       Json
+  provenanceJson   Json?
   errorMessage     String?
   discoveredAt     DateTime            @default(now())
   createdAt        DateTime            @default(now())
@@ -332,6 +366,7 @@ model LeadDiscoveryRecord {
   @@unique([leadId, icpProfileId, provider, providerRecordId])
   @@index([leadId, discoveredAt])
   @@index([icpProfileId, discoveredAt])
+  @@index([provider, providerSource])
   @@index([provider, status])
 }
 
@@ -623,4 +658,120 @@ model TrainingLabel {
   @@unique([leadId, feedbackEventId])
   @@index([createdAt])
   @@index([label])
+}
+
+model SearchTask {
+  id                 String           @id @default(uuid())
+  taskType           SearchTaskType   @map("task_type")
+  countryCode        String           @map("country_code")
+  city               String?
+  language           String
+  queryText          String           @map("query_text")
+  normalizedQueryKey String           @map("normalized_query_key")
+  queryHash          String           @map("query_hash")
+  paramsJson         Json             @map("params_json")
+  page               Int
+  timeBucket         String           @map("time_bucket")
+  status             SearchTaskStatus @default(PENDING)
+  attempts           Int              @default(0)
+  runAfter           DateTime         @default(now()) @map("run_after")
+  lastResultHash     String?          @map("last_result_hash")
+  error              String?
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  discoveredSources  Source[]
+  businessEvidence   BusinessEvidence[]
+
+  @@unique([taskType, queryHash])
+  @@index([status, runAfter])
+  @@index([countryCode, language, timeBucket])
+  @@map("search_tasks")
+}
+
+model Source {
+  id                   String      @id @default(uuid())
+  type                 DiscoverySourceType
+  rootDomain           String      @map("root_domain")
+  url                  String      @unique
+  countryHint          String?     @map("country_hint")
+  discoveredFromTaskId String?     @map("discovered_from_task_id")
+  discoveredFromTask   SearchTask? @relation(fields: [discoveredFromTaskId], references: [id], onDelete: SetNull)
+  score                Float       @default(0)
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  @@index([rootDomain])
+  @@index([countryHint])
+  @@map("sources")
+}
+
+model Business {
+  id              String              @id @default(uuid())
+  name            String
+  countryCode     String              @map("country_code")
+  city            String?
+  address         String?
+  phoneE164       String?             @map("phone_e164")
+  websiteDomain   String?             @map("website_domain")
+  instagramHandle String?             @map("instagram_handle")
+  category        String?
+  rating          Float?
+  reviewCount     Int?                @map("review_count")
+  deterministicScore Float            @default(0) @map("deterministic_score")
+  scoreBand       ScoreBand?          @map("score_band")
+  hasWhatsapp     Boolean             @default(false) @map("has_whatsapp")
+  hasInstagram    Boolean             @default(false) @map("has_instagram")
+  acceptsOnlinePayments Boolean       @default(false) @map("accepts_online_payments")
+  followerCount   Int?                @map("follower_count")
+  physicalAddressPresent Boolean      @default(false) @map("physical_address_present")
+  recentActivity  Boolean             @default(false) @map("recent_activity")
+  lat             Float?
+  lng             Float?
+  confidence      Float               @default(0.5)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  evidence        BusinessEvidence[]
+
+  @@index([countryCode, city])
+  @@index([websiteDomain])
+  @@index([phoneE164])
+  @@map("businesses")
+}
+
+model BusinessEvidence {
+  id             String   @id @default(uuid())
+  businessId     String   @map("business_id")
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  searchTaskId   String?  @map("search_task_id")
+  searchTask     SearchTask? @relation(fields: [searchTaskId], references: [id], onDelete: SetNull)
+  sourceUrl      String   @map("source_url")
+  sourceType     String   @map("source_type")
+  serpapiResultId String? @map("serpapi_result_id")
+  rawJson        Json     @map("raw_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([businessId])
+  @@index([searchTaskId])
+  @@map("business_evidence")
+}
+
+model JobRun {
+  id          String       @id @default(uuid())
+  jobName     String       @map("job_name")
+  startedAt   DateTime     @default(now()) @map("started_at")
+  finishedAt  DateTime?    @map("finished_at")
+  durationMs  Int?         @map("duration_ms")
+  status      JobRunStatus
+  paramsJson  Json         @map("params_json")
+  countersJson Json?       @map("counters_json")
+  resourceJson Json?       @map("resource_json")
+  errorText   String?      @map("error_text")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([jobName, startedAt])
+  @@index([status, startedAt])
+  @@map("job_runs")
 }

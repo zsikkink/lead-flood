@@ -7,14 +7,20 @@ import { createHash } from 'node:crypto';
 import { Prisma, prisma } from '@lead-flood/db';
 import {
   ApolloRateLimitError,
+  BraveSearchRateLimitError,
+  GooglePlacesRateLimitError,
   GoogleSearchRateLimitError,
   LinkedInScrapeRateLimitError,
 } from '@lead-flood/providers';
 import type {
   ApolloDiscoveryAdapter,
   ApolloDiscoveryRequest,
+  BraveSearchAdapter,
+  BraveSearchDiscoveryRequest,
   CompanySearchAdapter,
   CompanySearchDiscoveryRequest,
+  GooglePlacesAdapter,
+  GooglePlacesDiscoveryRequest,
   GoogleSearchAdapter,
   GoogleSearchDiscoveryRequest,
   LinkedInScrapeAdapter,
@@ -72,21 +78,37 @@ export interface DiscoveryRunLogger {
 export interface DiscoveryRunDependencies {
   boss: Pick<PgBoss, 'send'>;
   apolloAdapter: ApolloDiscoveryAdapter;
+  braveSearchAdapter: BraveSearchAdapter;
+  googlePlacesAdapter: GooglePlacesAdapter;
   googleSearchAdapter: GoogleSearchAdapter;
   linkedInScrapeAdapter: LinkedInScrapeAdapter;
   companySearchAdapter: CompanySearchAdapter;
   discoveryEnabled: boolean;
   apolloEnabled: boolean;
+  braveSearchEnabled: boolean;
+  googlePlacesEnabled: boolean;
   googleSearchEnabled: boolean;
   linkedInScrapeEnabled: boolean;
   companySearchEnabled: boolean;
   defaultProvider: DiscoveryProvider;
+  providerOrder?: DiscoveryProvider[];
   defaultEnrichmentProvider: EnrichmentProvider;
   defaultLimit?: number;
 }
 
+interface DiscoveryLeadProvenance {
+  provider: DiscoveryProvider;
+  providerSource: string;
+  providerRecordId: string;
+  confidence: number | null;
+}
+
 interface NormalizedDiscoveredLead {
-  provider: string;
+  provider: DiscoveryProvider;
+  providerSource: string;
+  providerConfidence: number | null;
+  adapterProvider: string;
+  provenance: DiscoveryLeadProvenance[];
   providerRecordId: string;
   firstName: string;
   lastName: string;
@@ -111,6 +133,15 @@ interface DiscoveryRunProgress {
   processedItems: number;
   failedItems: number;
 }
+
+const PROVIDER_DEFAULT_CONFIDENCE: Record<DiscoveryProvider, number> = {
+  BRAVE_SEARCH: 0.75,
+  GOOGLE_PLACES: 0.85,
+  GOOGLE_SEARCH: 0.7,
+  LINKEDIN_SCRAPE: 0.65,
+  COMPANY_SEARCH_FREE: 0.6,
+  APOLLO: 0.9,
+};
 
 function deriveLeadName(email: string): { firstName: string; lastName: string } {
   const localPart = email.split('@')[0] ?? 'lead';
@@ -669,6 +700,54 @@ function toApolloRequest(
   return request;
 }
 
+function toBraveSearchRequest(
+  payload: DiscoveryRunJobPayload,
+  limit: number,
+  correlationId: string,
+): BraveSearchDiscoveryRequest {
+  const request: BraveSearchDiscoveryRequest = {
+    limit,
+    correlationId,
+  };
+
+  if (payload.icpProfileId) {
+    request.icpProfileId = payload.icpProfileId;
+  }
+  if (payload.cursor) {
+    request.cursor = payload.cursor;
+  }
+  if (payload.filters) {
+    request.filters = payload.filters;
+  }
+  request.query = buildGoogleSearchQueryFromFilters(payload.filters);
+
+  return request;
+}
+
+function toGooglePlacesRequest(
+  payload: DiscoveryRunJobPayload,
+  limit: number,
+  correlationId: string,
+): GooglePlacesDiscoveryRequest {
+  const request: GooglePlacesDiscoveryRequest = {
+    limit,
+    correlationId,
+  };
+
+  if (payload.icpProfileId) {
+    request.icpProfileId = payload.icpProfileId;
+  }
+  if (payload.cursor) {
+    request.cursor = payload.cursor;
+  }
+  if (payload.filters) {
+    request.filters = payload.filters;
+  }
+  request.query = buildGoogleSearchQueryFromFilters(payload.filters);
+
+  return request;
+}
+
 function toGoogleSearchRequest(
   payload: DiscoveryRunJobPayload,
   limit: number,
@@ -744,6 +823,119 @@ function toCompanySearchRequest(
   return request;
 }
 
+interface ProviderLeadInput {
+  provider: string;
+  providerRecordId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  title: string | null;
+  companyName: string | null;
+  companyDomain: string | null;
+  companySize: number | null;
+  country: string | null;
+  raw: unknown;
+}
+
+function defaultProviderConfidence(provider: DiscoveryProvider): number {
+  return PROVIDER_DEFAULT_CONFIDENCE[provider];
+}
+
+function toNormalizedDiscoveryLead(
+  provider: DiscoveryProvider,
+  source: string,
+  lead: ProviderLeadInput,
+): NormalizedDiscoveredLead {
+  const providerConfidence = defaultProviderConfidence(provider);
+  const provenance: DiscoveryLeadProvenance[] = [
+    {
+      provider,
+      providerSource: source,
+      providerRecordId: lead.providerRecordId,
+      confidence: providerConfidence,
+    },
+  ];
+
+  return {
+    provider,
+    providerSource: source,
+    providerConfidence,
+    adapterProvider: lead.provider,
+    provenance,
+    providerRecordId: lead.providerRecordId,
+    firstName: lead.firstName,
+    lastName: lead.lastName,
+    email: lead.email,
+    title: lead.title,
+    companyName: lead.companyName,
+    companyDomain: lead.companyDomain,
+    companySize: lead.companySize,
+    country: lead.country,
+    raw: lead.raw,
+  };
+}
+
+function mergeDiscoveryResults(results: DiscoveryExecutionResult[]): NormalizedDiscoveredLead[] {
+  const byEmail = new Map<string, NormalizedDiscoveredLead>();
+
+  for (const result of results) {
+    for (const lead of result.leads) {
+      const key = lead.email.trim().toLowerCase();
+      if (!key) {
+        continue;
+      }
+
+      const existing = byEmail.get(key);
+      if (!existing) {
+        byEmail.set(key, {
+          ...lead,
+          provenance: [...lead.provenance],
+        });
+        continue;
+      }
+
+      const existingConfidence = existing.providerConfidence ?? 0;
+      const candidateConfidence = lead.providerConfidence ?? 0;
+      const nextPrimary = candidateConfidence > existingConfidence ? lead : existing;
+      const mergedProvenance = [
+        ...existing.provenance,
+        ...lead.provenance,
+      ];
+      byEmail.set(key, {
+        ...nextPrimary,
+        provenance: mergedProvenance,
+        raw: {
+          primary: nextPrimary.raw,
+          provenance: mergedProvenance,
+          alternates: [existing.raw, lead.raw].filter((entry) => entry !== nextPrimary.raw),
+        },
+      });
+    }
+  }
+
+  return Array.from(byEmail.values());
+}
+
+function resolveProvidersToRun(
+  payloadProvider: DiscoveryProvider | undefined,
+  dependencies: DiscoveryRunDependencies,
+): DiscoveryProvider[] {
+  if (payloadProvider) {
+    return [payloadProvider];
+  }
+
+  if (!dependencies.providerOrder || dependencies.providerOrder.length === 0) {
+    return [dependencies.defaultProvider];
+  }
+
+  const providerOrder = [
+    dependencies.defaultProvider,
+    ...dependencies.providerOrder,
+  ];
+
+  return Array.from(new Set(providerOrder));
+}
+
 async function executeDiscoveryProvider(
   payload: DiscoveryRunJobPayload,
   provider: DiscoveryProvider,
@@ -754,6 +946,46 @@ async function executeDiscoveryProvider(
   jobId: string,
 ): Promise<DiscoveryExecutionResult> {
   switch (provider) {
+    case 'BRAVE_SEARCH': {
+      if (!dependencies.braveSearchEnabled) {
+        logger.warn(
+          { jobId, runId: payload.runId, correlationId, provider },
+          'Skipping discovery provider because it is disabled',
+        );
+        return { provider, source: 'disabled', leads: [], nextCursor: null };
+      }
+
+      const result = await dependencies.braveSearchAdapter.discoverLeads(
+        toBraveSearchRequest(payload, limit, correlationId),
+      );
+      return {
+        provider,
+        source: result.source,
+        leads: result.leads.map((lead) => toNormalizedDiscoveryLead(provider, result.source, lead)),
+        nextCursor: result.nextCursor,
+      };
+    }
+
+    case 'GOOGLE_PLACES': {
+      if (!dependencies.googlePlacesEnabled) {
+        logger.warn(
+          { jobId, runId: payload.runId, correlationId, provider },
+          'Skipping discovery provider because it is disabled',
+        );
+        return { provider, source: 'disabled', leads: [], nextCursor: null };
+      }
+
+      const result = await dependencies.googlePlacesAdapter.discoverLeads(
+        toGooglePlacesRequest(payload, limit, correlationId),
+      );
+      return {
+        provider,
+        source: result.source,
+        leads: result.leads.map((lead) => toNormalizedDiscoveryLead(provider, result.source, lead)),
+        nextCursor: result.nextCursor,
+      };
+    }
+
     case 'GOOGLE_SEARCH': {
       if (!dependencies.googleSearchEnabled) {
         logger.warn(
@@ -770,7 +1002,7 @@ async function executeDiscoveryProvider(
       return {
         provider,
         source: result.source,
-        leads: result.leads,
+        leads: result.leads.map((lead) => toNormalizedDiscoveryLead(provider, result.source, lead)),
         nextCursor: result.nextCursor,
       };
     }
@@ -790,7 +1022,7 @@ async function executeDiscoveryProvider(
       return {
         provider,
         source: result.source,
-        leads: result.leads,
+        leads: result.leads.map((lead) => toNormalizedDiscoveryLead(provider, result.source, lead)),
         nextCursor: result.nextCursor,
       };
     }
@@ -810,7 +1042,7 @@ async function executeDiscoveryProvider(
       return {
         provider,
         source: result.source,
-        leads: result.leads,
+        leads: result.leads.map((lead) => toNormalizedDiscoveryLead(provider, result.source, lead)),
         nextCursor: result.nextCursor,
       };
     }
@@ -831,7 +1063,7 @@ async function executeDiscoveryProvider(
       return {
         provider: 'APOLLO',
         source: 'apollo',
-        leads: result.leads,
+        leads: result.leads.map((lead) => toNormalizedDiscoveryLead('APOLLO', 'apollo', lead)),
         nextCursor: result.nextCursor,
       };
     }
@@ -909,6 +1141,7 @@ async function markDiscoveryRunJobProgress(
   progress: DiscoveryRunProgress,
   nextCursor: string | null,
   selectedProvider: DiscoveryProvider,
+  providersRan: DiscoveryProvider[],
 ): Promise<void> {
   const hasNextCursor = Boolean(nextCursor && nextCursor !== payload.cursor);
 
@@ -923,6 +1156,7 @@ async function markDiscoveryRunJobProgress(
       result: toInputJson({
         ...progress,
         provider: selectedProvider,
+        providersRan,
         cursor: payload.cursor ?? null,
         nextCursor,
       }),
@@ -936,6 +1170,7 @@ async function markDiscoveryRunJobProgress(
       result: toInputJson({
         ...progress,
         provider: selectedProvider,
+        providersRan,
         cursor: payload.cursor ?? null,
         nextCursor,
       }),
@@ -953,6 +1188,7 @@ export async function handleDiscoveryRunJob(
   const { runId, correlationId, icpProfileId } = job.data;
   const effectiveCorrelationId = correlationId ?? job.id;
   const selectedProvider = job.data.provider ?? dependencies.defaultProvider;
+  const providersToRun = resolveProvidersToRun(job.data.provider, dependencies);
   const normalizedIcpProfileId = icpProfileId ?? null;
 
   logger.info(
@@ -963,6 +1199,7 @@ export async function handleDiscoveryRunJob(
       correlationId: effectiveCorrelationId,
       icpProfileId,
       provider: selectedProvider,
+      providersToRun,
       cursor: job.data.cursor ?? null,
     },
     'Started discovery.run job',
@@ -1044,7 +1281,6 @@ export async function handleDiscoveryRunJob(
     icpProfileId: normalizedIcpProfileId,
     filters: resolvedFilters,
   };
-  const queryHash = computeQueryHash(discoveryPayload, selectedProvider);
 
   logger.info(
     {
@@ -1053,6 +1289,7 @@ export async function handleDiscoveryRunJob(
       correlationId: effectiveCorrelationId,
       icpProfileId: normalizedIcpProfileId,
       provider: selectedProvider,
+      providersToRun,
       resolvedFilters,
       activeRuleCount: qualificationRules.length,
     },
@@ -1060,143 +1297,200 @@ export async function handleDiscoveryRunJob(
   );
 
   try {
-    const discoveryResult = await executeDiscoveryProvider(
-      discoveryPayload,
-      selectedProvider,
-      requestedLimit,
-      effectiveCorrelationId,
-      dependencies,
-      logger,
-      job.id,
-    );
+    const providerResults: DiscoveryExecutionResult[] = [];
+    const providerErrors: Array<{
+      provider: DiscoveryProvider;
+      error: Record<string, unknown>;
+    }> = [];
+
+    for (const provider of providersToRun) {
+      try {
+        const result = await executeDiscoveryProvider(
+          discoveryPayload,
+          provider,
+          requestedLimit,
+          effectiveCorrelationId,
+          dependencies,
+          logger,
+          job.id,
+        );
+        providerResults.push(result);
+      } catch (providerError: unknown) {
+        const serializedProviderError = serializeErrorForLog(providerError);
+        providerErrors.push({
+          provider,
+          error: serializedProviderError,
+        });
+        logger.warn(
+          {
+            jobId: job.id,
+            queue: job.name,
+            runId,
+            correlationId: effectiveCorrelationId,
+            provider,
+            error: serializedProviderError,
+          },
+          'Discovery provider failed, attempting next provider in order',
+        );
+      }
+    }
+
+    const mergedLeads = mergeDiscoveryResults(providerResults);
+    const primaryProviderResult =
+      providerResults.find((result) => result.provider === selectedProvider) ??
+      providerResults[0] ??
+      null;
+    const nextCursor = providersToRun.length === 1 ? primaryProviderResult?.nextCursor ?? null : null;
+
+    if (providersToRun.length > 1 && providerResults.some((result) => Boolean(result.nextCursor))) {
+      // TODO(discovery-fanout): Persist per-provider cursors for multipage fanout runs.
+      logger.warn(
+        {
+          jobId: job.id,
+          runId,
+          correlationId: effectiveCorrelationId,
+          providersToRun,
+        },
+        'Ignoring provider pagination cursors during fanout run',
+      );
+    }
+
+    if (mergedLeads.length === 0 && providerErrors.length === providersToRun.length) {
+      const failedProviders = providerErrors.map((entry) => entry.provider).join(', ');
+      throw new Error(`All discovery providers failed for run ${runId}: ${failedProviders}`);
+    }
 
     let createdLeads = 0;
     let enqueuedEnrichmentJobs = 0;
     let persistedDiscoveryRecords = 0;
 
-    for (const discoveredLead of discoveryResult.leads) {
+    for (const discoveredLead of mergedLeads) {
       const fallbackName = deriveLeadName(discoveredLead.email);
+      const existingLead = await prisma.lead.findUnique({
+        where: { email: discoveredLead.email },
+        select: { id: true },
+      });
 
-      // Wrap per-lead DB writes in a transaction to avoid orphaned records on crash
-      const { lead, enrichmentPayload } = await prisma.$transaction(async (tx) => {
-        const existingLead = await tx.lead.findUnique({
-          where: { email: discoveredLead.email },
-          select: { id: true },
-        });
-
-        const txLead = await tx.lead.upsert({
-          where: { email: discoveredLead.email },
-          create: {
-            firstName: discoveredLead.firstName || fallbackName.firstName,
-            lastName: discoveredLead.lastName || fallbackName.lastName,
-            email: discoveredLead.email,
-            source: selectedProvider.toLowerCase(),
-            status: 'new',
-          },
-          update: {
-            firstName: discoveredLead.firstName || fallbackName.firstName,
-            lastName: discoveredLead.lastName || fallbackName.lastName,
-            source: selectedProvider.toLowerCase(),
-          },
-        });
-
-        const txDiscoveryRecord = await tx.leadDiscoveryRecord.upsert({
-          where: {
-            leadId_icpProfileId_provider_providerRecordId: {
-              leadId: txLead.id,
-              icpProfileId: normalizedIcpProfileId,
-              provider: selectedProvider,
-              providerRecordId: discoveredLead.providerRecordId,
-            },
-          },
-          create: {
-            leadId: txLead.id,
-            icpProfileId: normalizedIcpProfileId,
-            provider: selectedProvider,
-            providerRecordId: discoveredLead.providerRecordId,
-            providerCursor: discoveryPayload.cursor ?? null,
-            queryHash,
-            status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
-            rawPayload: toInputJson(discoveredLead.raw),
-            discoveredAt: new Date(),
-          },
-          update: {
-            providerCursor: discoveryPayload.cursor ?? null,
-            queryHash,
-            status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
-            rawPayload: toInputJson(discoveredLead.raw),
-            discoveredAt: new Date(),
-            errorMessage: null,
-          },
-        });
-
-        // Keep JobExecution visibility for operators, but pipeline correctness uses LeadDiscoveryRecord.
-        await tx.jobExecution.create({
-          data: {
-            type: DISCOVERY_RECORD_JOB_TYPE,
-            status: 'completed',
-            attempts: 1,
-            payload: {
-              runId,
-              correlationId: effectiveCorrelationId,
-              icpProfileId: normalizedIcpProfileId,
-              selectedProvider,
-              providerSource: discoveryResult.source,
-              provider: discoveredLead.provider,
-              providerRecordId: discoveredLead.providerRecordId,
-              raw: discoveredLead.raw,
-              discoveryRecordId: txDiscoveryRecord.id,
-            } as Prisma.InputJsonValue,
-            result: toInputJson({
-              normalized: discoveredLead,
-            }),
-            leadId: txLead.id,
-            startedAt: new Date(),
-            finishedAt: new Date(),
-          },
-        });
-
-        const enrichmentJobExecution = await tx.jobExecution.create({
-          data: {
-            type: ENRICHMENT_RUN_JOB_NAME,
-            status: 'queued',
-            payload: {
-              runId,
-              leadId: txLead.id,
-              provider: dependencies.defaultEnrichmentProvider,
-              correlationId: effectiveCorrelationId,
-              jobExecutionId: null,
-              discoveryRecordId: txDiscoveryRecord.id,
-              icpProfileId: normalizedIcpProfileId,
-            },
-            leadId: txLead.id,
-          },
-        });
-
-        const txEnrichmentPayload: EnrichmentRunJobPayload = {
-          runId,
-          leadId: txLead.id,
-          provider: dependencies.defaultEnrichmentProvider,
-          correlationId: effectiveCorrelationId,
-          jobExecutionId: enrichmentJobExecution.id,
-          discoveryRecordId: txDiscoveryRecord.id,
-          icpProfileId: normalizedIcpProfileId,
-        };
-
-        await tx.jobExecution.update({
-          where: { id: enrichmentJobExecution.id },
-          data: {
-            payload: toInputJson(txEnrichmentPayload),
-          },
-        });
-
-        return { lead: txLead, enrichmentPayload: txEnrichmentPayload };
+      const lead = await prisma.lead.upsert({
+        where: { email: discoveredLead.email },
+        create: {
+          firstName: discoveredLead.firstName || fallbackName.firstName,
+          lastName: discoveredLead.lastName || fallbackName.lastName,
+          email: discoveredLead.email,
+          source: discoveredLead.provider.toLowerCase(),
+          status: 'new',
+        },
+        update: {
+          firstName: discoveredLead.firstName || fallbackName.firstName,
+          lastName: discoveredLead.lastName || fallbackName.lastName,
+          source: discoveredLead.provider.toLowerCase(),
+        },
       });
 
       createdLeads += 1;
+      const queryHash = computeQueryHash(discoveryPayload, discoveredLead.provider);
+
+      const discoveryRecord = await prisma.leadDiscoveryRecord.upsert({
+        where: {
+          leadId_icpProfileId_provider_providerRecordId: {
+            leadId: lead.id,
+            icpProfileId: normalizedIcpProfileId,
+            provider: discoveredLead.provider,
+            providerRecordId: discoveredLead.providerRecordId,
+          },
+        },
+        create: {
+          leadId: lead.id,
+          icpProfileId: normalizedIcpProfileId,
+          provider: discoveredLead.provider,
+          providerSource: discoveredLead.providerSource,
+          providerConfidence: discoveredLead.providerConfidence,
+          providerRecordId: discoveredLead.providerRecordId,
+          providerCursor: discoveryPayload.cursor ?? null,
+          queryHash,
+          status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
+          rawPayload: toInputJson(discoveredLead.raw),
+          provenanceJson: toInputJson(discoveredLead.provenance),
+          discoveredAt: new Date(),
+        },
+        update: {
+          providerSource: discoveredLead.providerSource,
+          providerConfidence: discoveredLead.providerConfidence,
+          providerCursor: discoveryPayload.cursor ?? null,
+          queryHash,
+          status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
+          rawPayload: toInputJson(discoveredLead.raw),
+          provenanceJson: toInputJson(discoveredLead.provenance),
+          discoveredAt: new Date(),
+          errorMessage: null,
+        },
+      });
+
       persistedDiscoveryRecords += 1;
 
-      // Enqueue enrichment job outside the transaction (pg-boss is a separate system)
+      // Keep JobExecution visibility for operators, but pipeline correctness uses LeadDiscoveryRecord.
+      await prisma.jobExecution.create({
+        data: {
+          type: DISCOVERY_RECORD_JOB_TYPE,
+          status: 'completed',
+          attempts: 1,
+          payload: toInputJson({
+            runId,
+            correlationId: effectiveCorrelationId,
+            icpProfileId: normalizedIcpProfileId,
+            selectedProvider,
+            providerSource: discoveredLead.providerSource,
+            provider: discoveredLead.provider,
+            adapterProvider: discoveredLead.adapterProvider,
+            providerConfidence: discoveredLead.providerConfidence,
+            providerRecordId: discoveredLead.providerRecordId,
+            provenance: discoveredLead.provenance,
+            raw: discoveredLead.raw,
+            discoveryRecordId: discoveryRecord.id,
+          }),
+          result: toInputJson({
+            normalized: discoveredLead,
+          }),
+          leadId: lead.id,
+          startedAt: new Date(),
+          finishedAt: new Date(),
+        },
+      });
+
+      const enrichmentJobExecution = await prisma.jobExecution.create({
+        data: {
+          type: ENRICHMENT_RUN_JOB_NAME,
+          status: 'queued',
+          payload: {
+            runId,
+            leadId: lead.id,
+            provider: dependencies.defaultEnrichmentProvider,
+            correlationId: effectiveCorrelationId,
+            jobExecutionId: null,
+            discoveryRecordId: discoveryRecord.id,
+            icpProfileId: normalizedIcpProfileId,
+          },
+          leadId: lead.id,
+        },
+      });
+
+      const enrichmentPayload: EnrichmentRunJobPayload = {
+        runId,
+        leadId: lead.id,
+        provider: dependencies.defaultEnrichmentProvider,
+        correlationId: effectiveCorrelationId,
+        jobExecutionId: enrichmentJobExecution.id,
+        discoveryRecordId: discoveryRecord.id,
+        icpProfileId: normalizedIcpProfileId,
+      };
+
+      await prisma.jobExecution.update({
+        where: { id: enrichmentJobExecution.id },
+        data: {
+          payload: toInputJson(enrichmentPayload),
+        },
+      });
+
       await dependencies.boss.send(ENRICHMENT_RUN_JOB_NAME, enrichmentPayload, {
         singletonKey: `enrichment.run:${lead.id}:${dependencies.defaultEnrichmentProvider}`,
         ...ENRICHMENT_RUN_RETRY_OPTIONS,
@@ -1205,15 +1499,15 @@ export async function handleDiscoveryRunJob(
       enqueuedEnrichmentJobs += 1;
     }
 
-    if (discoveryResult.nextCursor && discoveryResult.nextCursor !== discoveryPayload.cursor) {
+    if (nextCursor && nextCursor !== discoveryPayload.cursor) {
       const nextPayload: DiscoveryRunJobPayload = {
         ...discoveryPayload,
-        cursor: discoveryResult.nextCursor,
+        cursor: nextCursor,
         correlationId: effectiveCorrelationId,
       };
 
       await dependencies.boss.send(DISCOVERY_RUN_JOB_NAME, nextPayload, {
-        singletonKey: `discovery.run:${runId}:${discoveryResult.nextCursor}`,
+        singletonKey: `discovery.run:${runId}:${nextCursor}`,
         ...DISCOVERY_RUN_RETRY_OPTIONS,
       });
     }
@@ -1223,7 +1517,7 @@ export async function handleDiscoveryRunJob(
       select: { result: true },
     });
     const existingProgress = readRunProgress(existingRunExecution?.result ?? null);
-    const pageFailedItems = Math.max(discoveryResult.leads.length - persistedDiscoveryRecords, 0);
+    const pageFailedItems = Math.max(mergedLeads.length - persistedDiscoveryRecords, 0);
     const updatedProgress: DiscoveryRunProgress = {
       processedItems: existingProgress.processedItems + persistedDiscoveryRecords,
       failedItems: existingProgress.failedItems + pageFailedItems,
@@ -1238,8 +1532,9 @@ export async function handleDiscoveryRunJob(
       runId,
       discoveryPayload,
       updatedProgress,
-      discoveryResult.nextCursor,
+      nextCursor,
       selectedProvider,
+      providerResults.map((result) => result.provider),
     );
 
     logger.info(
@@ -1249,10 +1544,12 @@ export async function handleDiscoveryRunJob(
         runId,
         correlationId: effectiveCorrelationId,
         provider: selectedProvider,
+        providersRan: providerResults.map((result) => result.provider),
+        providerFailures: providerErrors.length,
         createdLeads,
         persistedDiscoveryRecords,
         enqueuedEnrichmentJobs,
-        nextCursor: discoveryResult.nextCursor,
+        nextCursor,
       },
       'Completed discovery.run job',
     );
@@ -1261,6 +1558,8 @@ export async function handleDiscoveryRunJob(
 
     if (
       error instanceof ApolloRateLimitError ||
+      error instanceof BraveSearchRateLimitError ||
+      error instanceof GooglePlacesRateLimitError ||
       error instanceof GoogleSearchRateLimitError ||
       error instanceof LinkedInScrapeRateLimitError
     ) {

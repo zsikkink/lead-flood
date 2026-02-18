@@ -7,6 +7,9 @@
 3. `docs/ENGINEERING_PLAN_BUILD_GUIDE.md`
 4. `docs/DEPLOYMENT.md`
 5. `docs/TROUBLESHOOTING.md`
+6. `docs/DISCOVERY_PROVIDER_STACK.md`
+7. `docs/SERPAPI_DISCOVERY.md`
+8. `docs/SPRINT_REPORT_DISCOVERY_UI.md`
 
 ## What Each Document Covers
 
@@ -34,6 +37,21 @@
   - Setup/runtime/test failure handling
   - Known warnings/deprecations
   - Current limitations and mitigation notes
+
+- `docs/DISCOVERY_PROVIDER_STACK.md`
+  - Discovery/enrichment provider toggles and required env vars
+  - Fanout ordering and rollout plan
+  - Cost/rate and operational risk notes
+
+- `docs/SERPAPI_DISCOVERY.md`
+  - SerpAPI-based task seeding and worker processing flow
+  - Required runtime env vars and local commands
+  - New discovery persistence tables and dedupe guarantees
+
+- `docs/SPRINT_REPORT_DISCOVERY_UI.md`
+  - Discovery console implementation summary
+  - Admin endpoints, telemetry, and provenance linkage details
+  - Verification commands and SQL checks
 
 ## Core Paths
 

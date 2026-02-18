@@ -12,6 +12,9 @@ import {
   ListLeadsResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
+  type RunDiscoverySeedRequest,
+  type RunDiscoveryTasksRequest,
+  type TriggerJobRunResponse,
   type CreateLeadRequest,
   type ListLeadsQuery,
   type ListLeadsResponse,
@@ -28,6 +31,7 @@ import type { ApiEnv } from './env.js';
 import { registerAnalyticsRoutes } from './modules/analytics/analytics.routes.js';
 import type { AnalyticsRollupJobPayload } from './modules/analytics/analytics.service.js';
 import { registerDiscoveryRoutes } from './modules/discovery/discovery.routes.js';
+import { registerDiscoveryAdminRoutes } from './modules/discovery-admin/discovery-admin.routes.js';
 import type { DiscoveryRunJobPayload } from './modules/discovery/discovery.service.js';
 import { registerEnrichmentRoutes } from './modules/enrichment/enrichment.routes.js';
 import type { EnrichmentRunJobPayload } from './modules/enrichment/enrichment.service.js';
@@ -90,6 +94,9 @@ export interface BuildServerOptions {
   enqueueAnalyticsRollup?: ((payload: AnalyticsRollupJobPayload) => Promise<void>) | undefined;
   enqueueReplyClassify?: ((payload: ReplyClassifyJobPayload) => Promise<void>) | undefined;
   trengoWebhookSecret?: string | undefined;
+  triggerDiscoverySeedJob?: ((input: RunDiscoverySeedRequest) => Promise<TriggerJobRunResponse>) | undefined;
+  triggerDiscoveryTaskRun?: ((input: RunDiscoveryTasksRequest) => Promise<TriggerJobRunResponse>) | undefined;
+  adminApiKey?: string | undefined;
   getLeadById: (leadId: string) => Promise<LeadRecord | null>;
   listLeads: (query: ListLeadsQuery) => Promise<ListLeadsResponse>;
   getJobById: (jobId: string) => Promise<JobRecord | null>;
@@ -314,6 +321,15 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     } else {
       registerAnalyticsRoutes(api);
     }
+    registerDiscoveryAdminRoutes(api, {
+      ...(options.adminApiKey ? { adminApiKey: options.adminApiKey } : {}),
+      ...(options.triggerDiscoverySeedJob
+        ? { triggerDiscoverySeedJob: options.triggerDiscoverySeedJob }
+        : {}),
+      ...(options.triggerDiscoveryTaskRun
+        ? { triggerDiscoveryTaskRun: options.triggerDiscoveryTaskRun }
+        : {}),
+    });
   };
 
   app.register(protectedRoutes);

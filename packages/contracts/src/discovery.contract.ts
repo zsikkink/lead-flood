@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const DiscoveryProviderSchema = z.enum([
+  'BRAVE_SEARCH',
+  'GOOGLE_PLACES',
   'GOOGLE_SEARCH',
   'LINKEDIN_SCRAPE',
   'COMPANY_SEARCH_FREE',
@@ -90,11 +92,14 @@ export const LeadDiscoveryRecordResponseSchema = z
     leadId: z.string(),
     icpProfileId: z.string(),
     provider: DiscoveryProviderSchema,
+    providerSource: z.string().nullable().optional(),
+    providerConfidence: z.number().nullable().optional(),
     providerRecordId: z.string(),
     providerCursor: z.string().nullable(),
     queryHash: z.string(),
     status: DiscoveryRecordStatusSchema,
     rawPayload: z.unknown(),
+    provenanceJson: z.unknown().nullable().optional(),
     errorMessage: z.string().nullable(),
     discoveredAt: z.string().datetime(),
     createdAt: z.string().datetime(),

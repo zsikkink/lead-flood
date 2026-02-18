@@ -230,7 +230,18 @@ function quoteTerm(term: string): string {
   return term.includes(' ') ? `"${term}"` : term;
 }
 
-function buildProviderQueries(filters: DiscoveryFilterContext): Array<{ provider: 'GOOGLE_SEARCH' | 'LINKEDIN_SCRAPE' | 'COMPANY_SEARCH_FREE' | 'APOLLO'; query: unknown }> {
+function buildProviderQueries(
+  filters: DiscoveryFilterContext,
+): Array<{
+  provider:
+    | 'BRAVE_SEARCH'
+    | 'GOOGLE_PLACES'
+    | 'GOOGLE_SEARCH'
+    | 'LINKEDIN_SCRAPE'
+    | 'COMPANY_SEARCH_FREE'
+    | 'APOLLO';
+  query: unknown;
+}> {
   const includeTerms = [
     ...filters.industries,
     ...filters.countries,
@@ -273,7 +284,27 @@ function buildProviderQueries(filters: DiscoveryFilterContext): Array<{ provider
     q_organization_num_employees_lte: filters.maxCompanySize,
   };
 
+  const placesQuery = [
+    filters.industries[0],
+    filters.countries[0],
+    filters.includeTerms[0],
+    '"contact us"',
+    '"WhatsApp"',
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(' ');
+
+  const braveQuery = [
+    ...includeTerms.slice(0, 4).map((term) => quoteTerm(term)),
+    '"contact us"',
+    '"order now"',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return [
+    { provider: 'BRAVE_SEARCH', query: braveQuery || null },
+    { provider: 'GOOGLE_PLACES', query: placesQuery || null },
     { provider: 'GOOGLE_SEARCH', query: googleQuery },
     { provider: 'LINKEDIN_SCRAPE', query: linkedinQuery },
     { provider: 'COMPANY_SEARCH_FREE', query: companySearchQuery || null },

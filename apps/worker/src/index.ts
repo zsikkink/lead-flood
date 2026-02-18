@@ -1,14 +1,22 @@
 import PgBoss, { type Job } from 'pg-boss';
 
 import { prisma } from '@lead-flood/db';
+import {
+  loadDiscoveryRuntimeConfig,
+  SerpApiDiscoveryProvider,
+  type DiscoveryRuntimeConfig,
+} from '@lead-flood/discovery';
+import type { DiscoveryProvider } from '@lead-flood/contracts';
 import { createLogger } from '@lead-flood/observability';
 import {
   ApolloDiscoveryAdapter,
+  BraveSearchAdapter,
   CompanySearchAdapter,
-  GoogleSearchAdapter,
-  LinkedInScrapeAdapter,
   ClearbitAdapter,
-  HunterAdapter,
+  GooglePlacesAdapter,
+  GoogleSearchAdapter,
+  HunterEnrichmentAdapter,
+  LinkedInScrapeAdapter,
   PdlEnrichmentAdapter,
   PublicWebLookupAdapter,
   OpenAiAdapter,
@@ -27,6 +35,18 @@ import {
   handleDiscoveryRunJob,
   type DiscoveryRunJobPayload,
 } from './jobs/discovery.run.job.js';
+import {
+  DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
+  DISCOVERY_RUN_SEARCH_TASK_RETRY_OPTIONS,
+  handleDiscoveryRunSearchTaskJob,
+  type DiscoveryRunSearchTaskJobPayload,
+} from './jobs/discovery.run_search_task.job.js';
+import {
+  DISCOVERY_SEED_JOB_NAME,
+  DISCOVERY_SEED_RETRY_OPTIONS,
+  handleDiscoverySeedJob,
+  type DiscoverySeedJobPayload,
+} from './jobs/discovery.seed.job.js';
 import {
   ENRICHMENT_RUN_JOB_NAME,
   handleEnrichmentRunJob,
@@ -97,18 +117,68 @@ interface WorkerLogger {
 
 type BossForWork = Pick<PgBoss, 'work'>;
 type JobHandler<TPayload> = (logger: WorkerLogger, job: Job<TPayload>) => Promise<void>;
+interface WorkerRegistrationOptions {
+  batchSize?: number;
+  pollingIntervalSeconds?: number;
+  concurrent?: boolean;
+}
+
+const ALL_DISCOVERY_PROVIDERS: DiscoveryProvider[] = [
+  'BRAVE_SEARCH',
+  'GOOGLE_PLACES',
+  'GOOGLE_SEARCH',
+  'LINKEDIN_SCRAPE',
+  'COMPANY_SEARCH_FREE',
+  'APOLLO',
+];
+
+function parseDiscoveryProviderOrder(raw: string | undefined): DiscoveryProvider[] {
+  if (!raw) {
+    return [];
+  }
+
+  const values = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry): entry is DiscoveryProvider =>
+      ALL_DISCOVERY_PROVIDERS.includes(entry as DiscoveryProvider),
+    );
+
+  return Array.from(new Set(values));
+}
 
 async function registerWorker<TPayload>(
   boss: BossForWork,
   logger: WorkerLogger,
   queueName: string,
   handler: JobHandler<TPayload>,
+  options?: WorkerRegistrationOptions,
 ): Promise<void> {
-  await boss.work<TPayload>(queueName, async (jobs) => {
+  const processJobs = async (jobs: Job<TPayload>[]): Promise<void> => {
+    if (options?.concurrent) {
+      await Promise.all(jobs.map(async (job) => handler(logger, job)));
+      return;
+    }
+
     for (const job of jobs) {
       await handler(logger, job);
     }
-  });
+  };
+
+  if (options?.batchSize || options?.pollingIntervalSeconds) {
+    await boss.work<TPayload>(
+      queueName,
+      {
+        ...(options.batchSize ? { batchSize: options.batchSize } : {}),
+        ...(options.pollingIntervalSeconds
+          ? { pollingIntervalSeconds: options.pollingIntervalSeconds }
+          : {}),
+      },
+      processJobs,
+    );
+  } else {
+    await boss.work<TPayload>(queueName, processJobs);
+  }
 
   logger.info({ queueName }, 'Registered worker queue');
 }
@@ -138,6 +208,20 @@ async function main(): Promise<void> {
     minRequestIntervalMs: env.APOLLO_RATE_LIMIT_MS,
   });
 
+  const braveSearchAdapter = new BraveSearchAdapter({
+    enabled: env.BRAVE_SEARCH_ENABLED,
+    apiKey: env.BRAVE_SEARCH_API_KEY,
+    baseUrl: env.BRAVE_SEARCH_BASE_URL,
+    minRequestIntervalMs: env.BRAVE_SEARCH_RATE_LIMIT_MS,
+  });
+
+  const googlePlacesAdapter = new GooglePlacesAdapter({
+    enabled: env.GOOGLE_PLACES_ENABLED,
+    apiKey: env.GOOGLE_PLACES_API_KEY,
+    baseUrl: env.GOOGLE_PLACES_BASE_URL,
+    minRequestIntervalMs: env.GOOGLE_PLACES_RATE_LIMIT_MS,
+  });
+
   const googleSearchAdapter = new GoogleSearchAdapter({
     apiKey: env.GOOGLE_SEARCH_API_KEY,
     searchEngineId: env.GOOGLE_SEARCH_ENGINE_ID,
@@ -162,7 +246,8 @@ async function main(): Promise<void> {
     minRequestIntervalMs: env.PDL_RATE_LIMIT_MS,
   });
 
-  const hunterAdapter = new HunterAdapter({
+  const hunterAdapter = new HunterEnrichmentAdapter({
+    enabled: env.HUNTER_ENABLED,
     apiKey: env.HUNTER_API_KEY,
     baseUrl: env.HUNTER_BASE_URL,
     minRequestIntervalMs: env.HUNTER_RATE_LIMIT_MS,
@@ -178,6 +263,36 @@ async function main(): Promise<void> {
     enabled: env.OTHER_FREE_ENRICHMENT_ENABLED,
     baseUrl: env.PUBLIC_LOOKUP_BASE_URL,
   });
+  const discoveryProviderOrder = parseDiscoveryProviderOrder(env.DISCOVERY_PROVIDER_ORDER);
+
+  let discoveryRuntimeConfig: DiscoveryRuntimeConfig | null = null;
+  let serpApiProvider: SerpApiDiscoveryProvider | null = null;
+  try {
+    discoveryRuntimeConfig = loadDiscoveryRuntimeConfig(process.env);
+    if (discoveryRuntimeConfig.mapsZoomWarning) {
+      logger.warn(
+        {
+          warning: discoveryRuntimeConfig.mapsZoomWarning,
+        },
+        'Using default discovery maps zoom',
+      );
+    }
+    serpApiProvider = new SerpApiDiscoveryProvider({
+      apiKey: discoveryRuntimeConfig.serpApiKey,
+      rps: discoveryRuntimeConfig.rps,
+      enableCache: discoveryRuntimeConfig.enableCache,
+      maxAttempts: discoveryRuntimeConfig.maxTaskAttempts,
+      backoffBaseSeconds: discoveryRuntimeConfig.backoffBaseSeconds,
+      mapsZoom: discoveryRuntimeConfig.mapsZoom,
+    });
+  } catch (error: unknown) {
+    logger.warn(
+      {
+        error: error instanceof Error ? error.message : 'invalid discovery runtime config',
+      },
+      'SerpAPI discovery runtime disabled; set SERPAPI_API_KEY and discovery env vars to enable',
+    );
+  }
 
   const openAiAdapter = new OpenAiAdapter({
     apiKey: env.OPENAI_API_KEY,
@@ -230,18 +345,82 @@ async function main(): Promise<void> {
     handleDiscoveryRunJob(jobLogger, job, {
       boss,
       apolloAdapter,
+      braveSearchAdapter,
+      googlePlacesAdapter,
       googleSearchAdapter,
       linkedInScrapeAdapter,
       companySearchAdapter,
       discoveryEnabled: env.DISCOVERY_ENABLED,
       apolloEnabled: env.APOLLO_ENABLED,
+      braveSearchEnabled: env.BRAVE_SEARCH_ENABLED,
+      googlePlacesEnabled: env.GOOGLE_PLACES_ENABLED,
       googleSearchEnabled: env.GOOGLE_SEARCH_ENABLED,
       linkedInScrapeEnabled: env.LINKEDIN_SCRAPE_ENABLED,
       companySearchEnabled: env.COMPANY_SEARCH_ENABLED,
       defaultProvider: env.DISCOVERY_DEFAULT_PROVIDER,
+      providerOrder: discoveryProviderOrder,
       defaultEnrichmentProvider: env.ENRICHMENT_DEFAULT_PROVIDER,
     }),
   );
+
+  if (discoveryRuntimeConfig && serpApiProvider) {
+    await registerWorker<DiscoverySeedJobPayload>(
+      boss,
+      logger,
+      DISCOVERY_SEED_JOB_NAME,
+      (jobLogger, job) =>
+        handleDiscoverySeedJob(jobLogger, job, {
+          boss,
+          config: discoveryRuntimeConfig,
+        }),
+    );
+
+    await registerWorker<DiscoveryRunSearchTaskJobPayload>(
+      boss,
+      logger,
+      DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
+      (jobLogger, job) =>
+        handleDiscoveryRunSearchTaskJob(jobLogger, job, {
+          boss,
+          provider: serpApiProvider,
+          config: discoveryRuntimeConfig,
+          ...(env.DISCOVERY_RUN_MAX_TASKS !== undefined
+            ? { maxTasks: env.DISCOVERY_RUN_MAX_TASKS }
+            : {}),
+        }),
+      {
+        batchSize: discoveryRuntimeConfig.concurrency,
+        pollingIntervalSeconds: 1,
+        concurrent: true,
+      },
+    );
+
+    for (let slot = 0; slot < discoveryRuntimeConfig.concurrency; slot += 1) {
+      await boss.send(
+        DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
+        {
+          slot,
+          reason: 'worker_bootstrap',
+          correlationId: 'bootstrap:discovery.run_search_task',
+        } satisfies DiscoveryRunSearchTaskJobPayload,
+        {
+          ...DISCOVERY_RUN_SEARCH_TASK_RETRY_OPTIONS,
+        },
+      );
+    }
+
+    await boss.send(
+      DISCOVERY_SEED_JOB_NAME,
+      {
+        reason: 'worker_bootstrap',
+        correlationId: 'bootstrap:discovery.seed',
+      } satisfies DiscoverySeedJobPayload,
+      {
+        ...DISCOVERY_SEED_RETRY_OPTIONS,
+      },
+    );
+  }
+
   await registerWorker<EnrichmentRunJobPayload>(
     boss,
     logger,
