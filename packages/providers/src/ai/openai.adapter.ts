@@ -47,6 +47,16 @@ export interface AiScoreResult {
   reasoning: string[];
 }
 
+export interface ReplyClassificationResult {
+  classification: 'INTERESTED' | 'NOT_INTERESTED' | 'OUT_OF_OFFICE' | 'UNSUBSCRIBE';
+  confidence: number;
+}
+
+export type OpenAiClassificationResult =
+  | { status: 'success'; data: ReplyClassificationResult }
+  | { status: 'retryable_error'; failure: OpenAiFailure }
+  | { status: 'terminal_error'; failure: OpenAiFailure };
+
 export interface OpenAiFailure {
   classification: 'retryable' | 'terminal';
   statusCode: number | null;
@@ -81,6 +91,11 @@ const GenerationResponseSchema = z.object({
 const ScoringResponseSchema = z.object({
   score: z.number().min(0).max(1),
   reasoning: z.array(z.string()),
+});
+
+const ClassificationResponseSchema = z.object({
+  classification: z.enum(['INTERESTED', 'NOT_INTERESTED', 'OUT_OF_OFFICE', 'UNSUBSCRIBE']),
+  confidence: z.number().min(0).max(1),
 });
 
 // ---------- Defaults ----------
@@ -213,6 +228,44 @@ export class OpenAiAdapter {
       (parsed) => ({
         score: parsed.score,
         reasoning: parsed.reasoning,
+      }),
+    );
+  }
+
+  async classifyReply(
+    replyText: string,
+  ): Promise<OpenAiClassificationResult> {
+    if (!this.apiKey) {
+      return {
+        status: 'terminal_error',
+        failure: {
+          classification: 'terminal',
+          statusCode: null,
+          message: 'OPENAI_API_KEY is not configured',
+          raw: null,
+        },
+      };
+    }
+
+    const systemPrompt = [
+      'You are a reply classifier for Zbooni, a UAE fintech company.',
+      'Classify the customer reply into exactly one category:',
+      '- INTERESTED: The person wants to learn more, asks questions, or shows positive intent.',
+      '- NOT_INTERESTED: The person explicitly declines, says no, or shows negative intent.',
+      '- OUT_OF_OFFICE: Auto-reply or mention of being away/unavailable/on leave.',
+      '- UNSUBSCRIBE: Asks to stop receiving messages, says "stop", "remove me", "don\'t contact me".',
+      'The reply may be in any language (English, Arabic, Hindi, etc.). Classify based on intent regardless of language.',
+      'Return the classification and a confidence score between 0 and 1.',
+    ].join(' ');
+
+    return this.callChatCompletion<ReplyClassificationResult>(
+      this.scoringModel,
+      systemPrompt,
+      `Reply text: "${replyText}"`,
+      ClassificationResponseSchema,
+      (parsed) => ({
+        classification: parsed.classification,
+        confidence: parsed.confidence,
       }),
     );
   }
