@@ -1,11 +1,13 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   LayoutDashboard,
   MessageSquare,
+  Rocket,
   Target,
   Users,
 } from 'lucide-react';
@@ -14,6 +16,7 @@ import { cn } from '../lib/utils.js';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Pipeline', icon: LayoutDashboard },
+  { href: '/dashboard/discover', label: 'Discover', icon: Rocket },
   { href: '/dashboard/leads', label: 'Leads', icon: Users },
   { href: '/dashboard/messages', label: 'Messages', icon: MessageSquare },
   { href: '/dashboard/icps', label: 'ICP Profiles', icon: Target },
@@ -26,17 +29,15 @@ export function Sidebar() {
   return (
     <aside className="hidden w-[260px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
       {/* Brand */}
-      <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-6">
-        <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <rect width="32" height="32" rx="8" fill="url(#sideGrad)" />
-          <path d="M8 12h16l-8 8-8-8z" fill="#1C1C2E" opacity="0.9" />
-          <defs>
-            <linearGradient id="sideGrad" x1="0" y1="0" x2="32" y2="32">
-              <stop stopColor="#7BFF6B" />
-              <stop offset="1" stopColor="#3CC8E0" />
-            </linearGradient>
-          </defs>
-        </svg>
+      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
+        <Image
+          src="/zbooni-icon.png"
+          alt="Zbooni"
+          width={32}
+          height={32}
+          className="rounded-lg"
+          aria-hidden="true"
+        />
         <div className="flex flex-col">
           <span className="text-[15px] font-bold leading-tight tracking-tight text-sidebar-foreground">
             Zbooni

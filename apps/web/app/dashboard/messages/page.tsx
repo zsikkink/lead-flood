@@ -3,12 +3,19 @@
 import type { MessageApprovalStatus } from '@lead-flood/contracts';
 import { useCallback, useState } from 'react';
 
+import { CustomSelect } from '../../../src/components/custom-select.js';
 import { MessageDraftCard } from '../../../src/components/message-draft-card.js';
 import { Pagination } from '../../../src/components/pagination.js';
 import { useApiQuery } from '../../../src/hooks/use-api-query.js';
 import { useAuth } from '../../../src/hooks/use-auth.js';
 
-const APPROVAL_STATUSES: MessageApprovalStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'AUTO_APPROVED'];
+const APPROVAL_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'PENDING', label: 'Pending' },
+  { value: 'APPROVED', label: 'Approved' },
+  { value: 'REJECTED', label: 'Rejected' },
+  { value: 'AUTO_APPROVED', label: 'Auto-Approved' },
+];
 
 export default function MessagesPage() {
   const { apiClient } = useAuth();
@@ -37,19 +44,15 @@ export default function MessagesPage() {
             {drafts.data ? `${drafts.data.total} drafts` : 'Loading...'}
           </p>
         </div>
-        <select
+        <CustomSelect
           value={statusFilter ?? ''}
-          onChange={(e) => {
-            setStatusFilter((e.target.value || undefined) as MessageApprovalStatus | undefined);
+          onChange={(v) => {
+            setStatusFilter((v || undefined) as MessageApprovalStatus | undefined);
             setPage(1);
           }}
-          className="h-9 rounded-xl border border-border/50 bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">All statuses</option>
-          {APPROVAL_STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+          options={APPROVAL_OPTIONS}
+          placeholder="All statuses"
+        />
       </div>
 
       {drafts.error ? (

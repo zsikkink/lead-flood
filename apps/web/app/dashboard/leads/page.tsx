@@ -4,14 +4,30 @@ import type { LeadScoreBand, LeadStatus } from '@lead-flood/contracts';
 import { useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
 
+import { CustomSelect } from '../../../src/components/custom-select.js';
 import { LeadStatusBadge } from '../../../src/components/lead-status-badge.js';
 import { Pagination } from '../../../src/components/pagination.js';
 import { ScoreBandBadge } from '../../../src/components/score-band-badge.js';
 import { useApiQuery } from '../../../src/hooks/use-api-query.js';
 import { useAuth } from '../../../src/hooks/use-auth.js';
 
-const STATUSES: LeadStatus[] = ['new', 'processing', 'enriched', 'messaged', 'replied', 'cold', 'failed'];
-const SCORE_BANDS: LeadScoreBand[] = ['HIGH', 'MEDIUM', 'LOW'];
+const STATUS_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'new', label: 'New' },
+  { value: 'processing', label: 'Processing' },
+  { value: 'enriched', label: 'Enriched' },
+  { value: 'messaged', label: 'Messaged' },
+  { value: 'replied', label: 'Replied' },
+  { value: 'cold', label: 'Cold' },
+  { value: 'failed', label: 'Failed' },
+];
+
+const SCORE_OPTIONS = [
+  { value: '', label: 'All scores' },
+  { value: 'HIGH', label: 'High' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'LOW', label: 'Low' },
+];
 
 export default function LeadsPage() {
   const { apiClient } = useAuth();
@@ -48,33 +64,24 @@ export default function LeadsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
-        <select
+        <CustomSelect
           value={statusFilter ?? ''}
-          onChange={(e) => {
-            setStatusFilter((e.target.value || undefined) as LeadStatus | undefined);
+          onChange={(v) => {
+            setStatusFilter((v || undefined) as LeadStatus | undefined);
             setPage(1);
           }}
-          className="h-9 cursor-pointer rounded-xl border border-border/50 bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-
-        <select
+          options={STATUS_OPTIONS}
+          placeholder="All statuses"
+        />
+        <CustomSelect
           value={scoreBandFilter ?? ''}
-          onChange={(e) => {
-            setScoreBandFilter((e.target.value || undefined) as LeadScoreBand | undefined);
+          onChange={(v) => {
+            setScoreBandFilter((v || undefined) as LeadScoreBand | undefined);
             setPage(1);
           }}
-          className="h-9 cursor-pointer rounded-xl border border-border/50 bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">All scores</option>
-          {SCORE_BANDS.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
+          options={SCORE_OPTIONS}
+          placeholder="All scores"
+        />
       </div>
 
       {leads.error ? (
@@ -111,7 +118,7 @@ export default function LeadsPage() {
                   {lead.latestScoreBand ? (
                     <ScoreBandBadge band={lead.latestScoreBand} />
                   ) : (
-                    <span className="text-muted-foreground/40">—</span>
+                    <span className="text-muted-foreground/40">&mdash;</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">

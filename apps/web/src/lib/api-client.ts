@@ -1,11 +1,16 @@
 import type {
+  CreateDiscoveryRunRequest,
+  CreateDiscoveryRunResponse,
   CreateLeadRequest,
   CreateLeadResponse,
+  DiscoveryRunStatusResponse,
   FeedbackSummaryResponse,
   FunnelQuery,
   FunnelResponse,
   GetLeadResponse,
   IcpProfileResponse,
+  ListDiscoveryRecordsQuery,
+  ListDiscoveryRecordsResponse,
   ListIcpProfilesQuery,
   ListIcpProfilesResponse,
   ListLeadsQuery,
@@ -21,6 +26,7 @@ import type {
   QualificationRuleResponse,
   RetrainStatusResponse,
   ScoreDistributionResponse,
+  UpdateIcpProfileRequest,
 } from '@lead-flood/contracts';
 
 export class ApiError extends Error {
@@ -120,6 +126,13 @@ export class ApiClient {
     return this.request(`/v1/icps/${icpId}/rules`);
   }
 
+  updateIcp(icpId: string, data: UpdateIcpProfileRequest): Promise<IcpProfileResponse> {
+    return this.request(`/v1/icps/${icpId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   // ── Messaging ─────────────────────────────────────
   listDrafts(query?: ListMessageDraftsQuery): Promise<ListMessageDraftsResponse> {
     const qs = query ? `?${toSearchParams(query as Record<string, unknown>)}` : '';
@@ -180,5 +193,22 @@ export class ApiClient {
   getFeedbackSummary(query?: Record<string, unknown>): Promise<FeedbackSummaryResponse> {
     const qs = query ? `?${toSearchParams(query)}` : '';
     return this.request(`/v1/feedback/summary${qs}`);
+  }
+
+  // ── Discovery ───────────────────────────────────
+  createDiscoveryRun(data: CreateDiscoveryRunRequest): Promise<CreateDiscoveryRunResponse> {
+    return this.request('/v1/discovery/runs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  getDiscoveryRunStatus(runId: string): Promise<DiscoveryRunStatusResponse> {
+    return this.request(`/v1/discovery/runs/${runId}`);
+  }
+
+  listDiscoveryRecords(query?: ListDiscoveryRecordsQuery): Promise<ListDiscoveryRecordsResponse> {
+    const qs = query ? `?${toSearchParams(query as Record<string, unknown>)}` : '';
+    return this.request(`/v1/discovery/records${qs}`);
   }
 }

@@ -10,6 +10,7 @@ import { cn } from '../lib/utils.js';
 
 const MOBILE_NAV = [
   { href: '/dashboard', label: 'Pipeline' },
+  { href: '/dashboard/discover', label: 'Discover' },
   { href: '/dashboard/leads', label: 'Leads' },
   { href: '/dashboard/messages', label: 'Messages' },
   { href: '/dashboard/icps', label: 'ICP Profiles' },
@@ -25,19 +26,21 @@ export function Header() {
   const pageTitle =
     pathname === '/dashboard'
       ? 'Pipeline Overview'
-      : pathname.startsWith('/dashboard/leads/')
-        ? 'Lead Detail'
-        : pathname === '/dashboard/leads'
-          ? 'Leads'
-          : pathname === '/dashboard/messages'
-            ? 'Message Queue'
-            : pathname.startsWith('/dashboard/icps/')
-              ? 'ICP Profile'
-              : pathname === '/dashboard/icps'
-                ? 'ICP Profiles'
-                : pathname === '/dashboard/analytics'
-                  ? 'Analytics'
-                  : 'Dashboard';
+      : pathname === '/dashboard/discover'
+        ? 'Discover Leads'
+        : pathname.startsWith('/dashboard/leads/')
+          ? 'Lead Detail'
+          : pathname === '/dashboard/leads'
+            ? 'Leads'
+            : pathname === '/dashboard/messages'
+              ? 'Message Queue'
+              : pathname.startsWith('/dashboard/icps/')
+                ? 'ICP Profile'
+                : pathname === '/dashboard/icps'
+                  ? 'ICP Profiles'
+                  : pathname === '/dashboard/analytics'
+                    ? 'Analytics'
+                    : 'Dashboard';
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/50 bg-background/80 backdrop-blur-xl">

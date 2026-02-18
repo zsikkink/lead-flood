@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 
+import { CustomSelect } from '../../src/components/custom-select.js';
 import { FunnelChart } from '../../src/components/funnel-chart.js';
 import { KpiCard } from '../../src/components/kpi-card.js';
 import { useAuth } from '../../src/hooks/use-auth.js';
@@ -31,6 +32,11 @@ export default function DashboardPage() {
     [icpFilter],
   );
 
+  const icpOptions = [
+    { value: '', label: 'All ICPs' },
+    ...(icps.data?.items.map((icp) => ({ value: icp.id, label: icp.name })) ?? []),
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -41,18 +47,12 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <select
+        <CustomSelect
           value={icpFilter ?? ''}
-          onChange={(e) => setIcpFilter(e.target.value || undefined)}
-          className="h-9 cursor-pointer rounded-xl border border-border/50 bg-card px-3 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">All ICPs</option>
-          {icps.data?.items.map((icp) => (
-            <option key={icp.id} value={icp.id}>
-              {icp.name}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setIcpFilter(v || undefined)}
+          options={icpOptions}
+          placeholder="All ICPs"
+        />
       </div>
 
       {funnel.error ? (
