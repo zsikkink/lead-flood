@@ -64,6 +64,13 @@ For local defaults, these values should stay aligned:
 - `PG_BOSS_SCHEMA=pgboss`
 
 JWT secrets in `apps/api/.env.local` must be at least 32 characters.
+Supabase JWT verification requires either:
+- `SUPABASE_JWT_ISSUER`
+- or `SUPABASE_PROJECT_REF` (issuer is derived)
+
+Web login requires:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
 Provider keys are optional in local development. Keep providers disabled unless keys are set.
 
@@ -86,10 +93,7 @@ pnpm db:seed
 pnpm icp:seed
 ```
 
-Seeded login credentials:
-
-- Email: `demo@lead-flood.local`
-- Password: `demo-password` (override with `DEMO_USER_PASSWORD`)
+Login is handled by Supabase Auth users. Create users in Supabase Auth and sign in from `/login`.
 
 ## 8) Run Applications
 

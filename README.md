@@ -77,6 +77,7 @@ pnpm dev
 ## Local URLs
 
 - Web: `http://localhost:3000`
+- Login: `http://localhost:3000/login` (Supabase Auth)
 - Discovery console: `http://localhost:3000/discovery`
 - API health: `http://localhost:5050/health`
 - API ready: `http://localhost:5050/ready`

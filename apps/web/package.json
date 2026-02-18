@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@lead-flood/contracts": "workspace:*",
+    "@supabase/supabase-js": "^2.57.4",
     "@tailwindcss/postcss": "^4.1.18",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

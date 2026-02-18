@@ -65,8 +65,10 @@ Key enums include:
 
 `apps/api/src/server.ts` currently registers:
 
-- Core: `/health`, `/ready`, `/v1/auth/login`, `/v1/leads`, `/v1/leads/:id`, `/v1/jobs/:id`
+- Core: `/health`, `/ready`, `/v1/leads`, `/v1/leads/:id`, `/v1/jobs/:id`
 - Modules: ICP, discovery, enrichment, scoring
+
+`/v1/auth/login` is retired; authentication uses Supabase Auth bearer tokens.
 
 Note: learning/messaging/feedback/analytics module scaffolds exist under `apps/api/src/modules/` but are not wired in `server.ts` yet.
 

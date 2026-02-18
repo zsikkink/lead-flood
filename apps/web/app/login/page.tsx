@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 
 import { useAuth } from '../../src/hooks/use-auth.js';
-import { ApiError } from '../../src/lib/api-client.js';
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuth();
@@ -35,7 +34,7 @@ export default function LoginPage() {
       await login(email, password);
       router.replace('/');
     } catch (submitError: unknown) {
-      if (submitError instanceof ApiError) {
+      if (submitError instanceof Error) {
         setError(submitError.message);
       } else {
         setError('Login failed — please try again');

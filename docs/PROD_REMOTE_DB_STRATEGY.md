@@ -56,7 +56,8 @@ For Supabase migration scripts:
 For web (Vercel):
 - `NEXT_PUBLIC_API_BASE_URL`
 - `ADMIN_API_KEY` (server-only; used by web `/api/admin/*` proxy)
-- optional: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
 Never commit:
 - `SUPABASE_SERVICE_ROLE_KEY`

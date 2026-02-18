@@ -1,9 +1,6 @@
-import { prisma } from '@lead-flood/db';
 import { createLogger } from '@lead-flood/observability';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { buildAuthenticateUser } from '../../src/auth/service.js';
-import { hashPassword } from '../../src/auth/password.js';
 import type { ApiEnv } from '../../src/env.js';
 import { buildServer } from '../../src/server.js';
 
@@ -23,6 +20,8 @@ const env: ApiEnv = {
   PG_BOSS_SCHEMA: 'pgboss',
   DATABASE_URL: databaseUrl,
   DIRECT_URL: directUrl,
+  SUPABASE_PROJECT_REF: 'test-project-ref',
+  SUPABASE_JWT_AUDIENCE: 'authenticated',
   APOLLO_API_KEY: 'apollo-test-key',
   PDL_API_KEY: 'pdl-test-key',
   DISCOVERY_ENABLED: true,
@@ -30,59 +29,12 @@ const env: ApiEnv = {
 };
 
 describe('POST /v1/auth/login integration', () => {
-  const userEmail = `integration-auth-${Date.now()}@lead-flood.local`;
-
-  afterEach(async () => {
-    await prisma.session.deleteMany({
-      where: {
-        user: {
-          email: userEmail,
-        },
-      },
-    });
-    await prisma.user.deleteMany({
-      where: {
-        email: userEmail,
-      },
-    });
-  });
-
-  it('authenticates a stored user and persists refresh session', async () => {
-    const password = 'integration-password';
-    await prisma.user.create({
-      data: {
-        email: userEmail,
-        firstName: 'Integration',
-        lastName: 'User',
-        isActive: true,
-        passwordHash: await hashPassword(password),
-      },
-    });
-
+  it('returns 410 because email/password login endpoint is retired', async () => {
     const server = buildServer({
       env,
       logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
-      accessTokenSecret: env.JWT_ACCESS_SECRET,
+      accessTokenSecret: env.JWT_ACCESS_SECRET!,
       checkDatabaseHealth: async () => true,
-      authenticateUser: buildAuthenticateUser({
-        findUserByEmail: async (email) => {
-          return prisma.user.findUnique({
-            where: { email },
-          });
-        },
-        createSession: async ({ sessionId, userId, refreshToken, expiresAt }) => {
-          await prisma.session.create({
-            data: {
-              id: sessionId,
-              userId,
-              refreshToken,
-              expiresAt,
-            },
-          });
-        },
-        accessTokenSecret: env.JWT_ACCESS_SECRET,
-        refreshTokenSecret: env.JWT_REFRESH_SECRET,
-      }),
       createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
       getLeadById: async () => null,
       listLeads: async () => ({ items: [], page: 1, pageSize: 20, total: 0 }),
@@ -93,26 +45,13 @@ describe('POST /v1/auth/login integration', () => {
       method: 'POST',
       url: '/v1/auth/login',
       payload: {
-        email: userEmail,
-        password,
+        email: 'integration-auth@lead-flood.local',
+        password: 'integration-password',
       },
     });
 
-    expect(response.statusCode).toBe(200);
-    const body = response.json() as {
-      accessToken: string;
-      refreshToken: string;
-      user: { id: string; email: string };
-    };
-    expect(body.accessToken).not.toBe('dev-access-token');
-    expect(body.refreshToken).not.toBe('dev-refresh-token');
-    expect(body.user.email).toBe(userEmail);
-
-    const session = await prisma.session.findUnique({
-      where: { refreshToken: body.refreshToken },
-    });
-    expect(session).not.toBeNull();
-    expect(session?.userId).toBe(body.user.id);
+    expect(response.statusCode).toBe(410);
+    expect((response.json() as { error: string }).error).toContain('Deprecated endpoint');
 
     await server.close();
   });

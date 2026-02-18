@@ -36,15 +36,15 @@ describe('ApiClient', () => {
 
   it('omits authorization header when no token', async () => {
     (getToken as ReturnType<typeof vi.fn>).mockReturnValue(null);
-    const mockResponse = { tokenType: 'Bearer', accessToken: 'x', refreshToken: 'y', expiresInSeconds: 3600, user: { id: '1', email: 'a@b.com', firstName: 'A', lastName: 'B' } };
+    const mockResponse = { items: [], page: 1, pageSize: 20, total: 0 };
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify(mockResponse), { status: 200 }),
     );
 
-    await client.login({ email: 'a@b.com', password: 'pass' });
+    await client.listLeads({ page: 1, pageSize: 20, includeQualityMetrics: false });
 
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/auth/login'),
+      expect.stringContaining('/v1/leads'),
       expect.objectContaining({
         headers: expect.not.objectContaining({
           authorization: expect.any(String),

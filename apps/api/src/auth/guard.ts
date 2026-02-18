@@ -1,10 +1,10 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import { verifyJwt } from './jwt.js';
-
 export interface AuthUser {
   sub: string;
-  sid: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
 }
 
 declare module 'fastify' {
@@ -13,7 +13,9 @@ declare module 'fastify' {
   }
 }
 
-export function buildAuthGuard(accessTokenSecret: string) {
+export type VerifyAccessToken = (token: string) => Promise<AuthUser | null>;
+
+export function buildAuthGuard(verifyAccessToken: VerifyAccessToken) {
   return async function authGuard(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const authHeader = request.headers.authorization;
 
@@ -23,24 +25,12 @@ export function buildAuthGuard(accessTokenSecret: string) {
     }
 
     const token = authHeader.slice(7);
-    const claims = verifyJwt(token, accessTokenSecret);
-
-    if (!claims) {
+    const user = await verifyAccessToken(token);
+    if (!user) {
       reply.status(401).send({ error: 'Invalid token' });
       return;
     }
 
-    if (claims.type !== 'access') {
-      reply.status(401).send({ error: 'Invalid token type' });
-      return;
-    }
-
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    if (claims.exp <= nowSeconds) {
-      reply.status(401).send({ error: 'Token expired' });
-      return;
-    }
-
-    request.user = { sub: claims.sub, sid: claims.sid };
+    request.user = user;
   };
 }

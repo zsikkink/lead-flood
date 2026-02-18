@@ -29,11 +29,14 @@ const ApiEnvSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(5050),
   CORS_ORIGIN: z.string().url().default('http://localhost:3000'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
-  JWT_ACCESS_SECRET: z.string().min(32),
-  JWT_REFRESH_SECRET: z.string().min(32),
+  JWT_ACCESS_SECRET: z.string().min(32).optional(),
+  JWT_REFRESH_SECRET: z.string().min(32).optional(),
   PG_BOSS_SCHEMA: z.string().min(1).default('pgboss'),
   DATABASE_URL: z.string().min(1),
   DIRECT_URL: z.string().min(1),
+  SUPABASE_PROJECT_REF: z.string().min(1).optional(),
+  SUPABASE_JWT_ISSUER: z.string().url().optional(),
+  SUPABASE_JWT_AUDIENCE: z.string().min(1).optional(),
   APOLLO_ENABLED: z.coerce.boolean().optional(),
   APOLLO_API_KEY: z.string().min(1).optional(),
   LINKEDIN_SCRAPE_ENABLED: z.coerce.boolean().optional(),
@@ -72,6 +75,14 @@ export function loadApiEnv(source: NodeJS.ProcessEnv): ApiEnv {
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
     throw new Error(`Invalid API environment configuration:\n${issues.join('\n')}`);
+  }
+
+  const hasIssuer = !!parsed.data.SUPABASE_JWT_ISSUER;
+  const hasProjectRef = !!parsed.data.SUPABASE_PROJECT_REF;
+  if (!hasIssuer && !hasProjectRef) {
+    throw new Error(
+      'Invalid API environment configuration:\nSUPABASE_JWT_ISSUER or SUPABASE_PROJECT_REF is required for Supabase JWT verification',
+    );
   }
 
   return parsed.data;

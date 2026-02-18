@@ -90,6 +90,27 @@ Fix:
 
 - Set both values in `apps/api/.env.local` with at least 32 characters.
 
+### API fails to start with Supabase JWT verifier errors
+
+Cause:
+
+- Neither `SUPABASE_JWT_ISSUER` nor `SUPABASE_PROJECT_REF` is set.
+
+Fix:
+
+- Set `SUPABASE_PROJECT_REF=<your-project-ref>` in `apps/api/.env.local`, or set `SUPABASE_JWT_ISSUER=https://<ref>.supabase.co/auth/v1`.
+- Optional: set `SUPABASE_JWT_AUDIENCE=authenticated` if you use a non-default audience.
+
+### Web login fails before submitting credentials
+
+Cause:
+
+- `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` missing in `apps/web/.env.local`.
+
+Fix:
+
+- Set both vars and restart the web app.
+
 ### Provider-related runtime errors
 
 Cause:

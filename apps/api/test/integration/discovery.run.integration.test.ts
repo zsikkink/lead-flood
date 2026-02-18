@@ -32,7 +32,7 @@ const env: ApiEnv = {
 function authHeaders(): Record<string, string> {
   const token = signJwt(
     { sub: 'user_1', sid: 'sess_1', type: 'access', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
-    env.JWT_ACCESS_SECRET,
+    env.JWT_ACCESS_SECRET!,
   );
   return { authorization: `Bearer ${token}` };
 }
@@ -84,7 +84,7 @@ describe('discovery run integration', () => {
     const server = buildServer({
       env,
       logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
-      accessTokenSecret: env.JWT_ACCESS_SECRET,
+      accessTokenSecret: env.JWT_ACCESS_SECRET!,
       checkDatabaseHealth: async () => true,
       authenticateUser: async () => null,
       createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),

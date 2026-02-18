@@ -8,7 +8,7 @@ import type {
   TriggerJobRunResponse,
 } from '@lead-flood/contracts';
 
-import { buildAuthenticateUser } from './auth/service.js';
+import { buildSupabaseAccessTokenVerifier } from './auth/supabase.js';
 import { loadApiEnv } from './env.js';
 import type { ReplyClassifyJobPayload } from '@lead-flood/contracts';
 
@@ -30,6 +30,19 @@ function toInputJson(value: unknown): Prisma.InputJsonValue {
 
 async function main(): Promise<void> {
   const env = loadApiEnv(process.env);
+  const supabaseJwtIssuer =
+    env.SUPABASE_JWT_ISSUER ??
+    (env.SUPABASE_PROJECT_REF
+      ? `https://${env.SUPABASE_PROJECT_REF}.supabase.co/auth/v1`
+      : null);
+  if (!supabaseJwtIssuer) {
+    throw new Error('SUPABASE_JWT_ISSUER or SUPABASE_PROJECT_REF is required');
+  }
+
+  const verifyAccessToken = buildSupabaseAccessTokenVerifier({
+    issuer: supabaseJwtIssuer,
+    audience: env.SUPABASE_JWT_AUDIENCE ?? 'authenticated',
+  });
   const logger = createLogger({
     service: 'api',
     env: env.APP_ENV,
@@ -204,7 +217,7 @@ async function main(): Promise<void> {
   const server = buildServer({
     env,
     logger,
-    accessTokenSecret: env.JWT_ACCESS_SECRET,
+    verifyAccessToken,
     checkDatabaseHealth: async () => {
       try {
         await prisma.$queryRaw`SELECT 1`;
@@ -214,25 +227,6 @@ async function main(): Promise<void> {
         return false;
       }
     },
-    authenticateUser: buildAuthenticateUser({
-      findUserByEmail: async (email) => {
-        return prisma.user.findUnique({
-          where: { email },
-        });
-      },
-      createSession: async ({ sessionId, userId, refreshToken, expiresAt }) => {
-        await prisma.session.create({
-          data: {
-            id: sessionId,
-            userId,
-            refreshToken,
-            expiresAt,
-          },
-        });
-      },
-      accessTokenSecret: env.JWT_ACCESS_SECRET,
-      refreshTokenSecret: env.JWT_REFRESH_SECRET,
-    }),
     createLeadAndEnqueue: async (input) => {
       try {
         const { lead, jobExecution, outboxEvent } = await prisma.$transaction(async (tx) => {

@@ -105,7 +105,7 @@ async function processLeadEnrichJob(job: { data: LeadEnrichJobPayload }): Promis
 function authHeaders(): Record<string, string> {
   const token = signJwt(
     { sub: 'user_1', sid: 'sess_1', type: 'access', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
-    env.JWT_ACCESS_SECRET,
+    env.JWT_ACCESS_SECRET!,
   );
   return { authorization: `Bearer ${token}` };
 }
@@ -132,7 +132,7 @@ describe('lead pipeline e2e', () => {
     const options: BuildServerOptions = {
       env,
       logger,
-      accessTokenSecret: env.JWT_ACCESS_SECRET,
+      accessTokenSecret: env.JWT_ACCESS_SECRET!,
       checkDatabaseHealth: async () => {
         try {
           await prisma.$queryRaw`SELECT 1`;

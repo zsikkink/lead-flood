@@ -27,7 +27,7 @@ const env: ApiEnv = {
 const makeDefaultOptions = (): BuildServerOptions => ({
   env,
   logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
-  accessTokenSecret: env.JWT_ACCESS_SECRET,
+  accessTokenSecret: env.JWT_ACCESS_SECRET!,
   checkDatabaseHealth: async () => true,
   authenticateUser: async ({ email }: LoginRequest) => ({
     tokenType: 'Bearer',
@@ -50,7 +50,7 @@ const makeDefaultOptions = (): BuildServerOptions => ({
 function authHeaders(): Record<string, string> {
   const token = signJwt(
     { sub: 'user_1', sid: 'sess_1', type: 'access', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
-    env.JWT_ACCESS_SECRET,
+    env.JWT_ACCESS_SECRET!,
   );
   return { authorization: `Bearer ${token}` };
 }
@@ -87,7 +87,7 @@ describe('buildServer', () => {
     expect(requestIdHeader).toBe(body.requestId);
   });
 
-  it('returns auth login response for valid payload', async () => {
+  it('returns 410 for deprecated auth login endpoint', async () => {
     const server = buildServer(makeDefaultOptions());
     servers.push(server);
 
@@ -99,60 +99,10 @@ describe('buildServer', () => {
         password: 'password',
       },
     });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      tokenType: 'Bearer',
-      accessToken: 'test-access-token',
-      refreshToken: 'test-refresh-token',
-      expiresInSeconds: 3600,
-      user: {
-        id: 'user_1',
-        email: 'demo@lead-flood.local',
-        firstName: 'Demo',
-        lastName: 'User',
-      },
-    });
-  });
-
-  it('returns 401 for invalid login credentials', async () => {
-    const server = buildServer({
-      ...makeDefaultOptions(),
-      authenticateUser: async () => null,
-    });
-    servers.push(server);
-
-    const response = await server.inject({
-      method: 'POST',
-      url: '/v1/auth/login',
-      payload: {
-        email: 'demo@lead-flood.local',
-        password: 'wrong-password',
-      },
-    });
     const body = response.json() as { error: string; requestId?: string };
 
-    expect(response.statusCode).toBe(401);
-    expect(body.error).toBe('Invalid email or password');
-    expect(response.headers['x-request-id']).toBe(body.requestId);
-  });
-
-  it('returns 400 for invalid login payload', async () => {
-    const server = buildServer(makeDefaultOptions());
-    servers.push(server);
-
-    const response = await server.inject({
-      method: 'POST',
-      url: '/v1/auth/login',
-      payload: {
-        email: 'not-an-email',
-        password: 'password',
-      },
-    });
-    const body = response.json() as { error: string; requestId?: string };
-
-    expect(response.statusCode).toBe(400);
-    expect(body.error).toBe('Invalid login payload');
+    expect(response.statusCode).toBe(410);
+    expect(body.error).toContain('Deprecated endpoint');
     expect(response.headers['x-request-id']).toBe(body.requestId);
   });
 

@@ -19,8 +19,6 @@ import type {
   ListMessageDraftsResponse,
   ListMessageSendsQuery,
   ListMessageSendsResponse,
-  LoginRequest,
-  LoginResponse,
   MessageDraftResponse,
   ModelMetricsResponse,
   QualificationRuleResponse,
@@ -86,14 +84,6 @@ export class ApiClient {
     }
 
     return response.json() as Promise<T>;
-  }
-
-  // ── Auth ──────────────────────────────────────────
-  login(data: LoginRequest): Promise<LoginResponse> {
-    return this.request('/v1/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
   }
 
   // ── Leads ─────────────────────────────────────────
