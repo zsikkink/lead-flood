@@ -25,6 +25,15 @@ function toQuery(params: Record<string, string | number | boolean | undefined | 
   return encoded.length > 0 ? `?${encoded}` : '';
 }
 
+function getStoredAccessToken(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const value = window.localStorage.getItem('lf_access_token');
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
 async function requestJson<T>({
   path,
   method = 'GET',
@@ -36,9 +45,19 @@ async function requestJson<T>({
   body?: unknown;
   schema: { parse: (input: unknown) => T };
 }): Promise<T> {
-  const init: RequestInit = { method };
+  const headers = new Headers();
+  const accessToken = getStoredAccessToken();
+  if (accessToken) {
+    headers.set('authorization', `Bearer ${accessToken}`);
+  }
+
+  const init: RequestInit = {
+    method,
+    headers,
+  };
+
   if (body !== undefined) {
-    init.headers = { 'content-type': 'application/json' };
+    headers.set('content-type', 'application/json');
     init.body = JSON.stringify(body);
   }
 
@@ -50,7 +69,11 @@ async function requestJson<T>({
       parsedBody && typeof parsedBody === 'object' && 'error' in parsedBody
         ? String((parsedBody as { error?: unknown }).error ?? 'Request failed')
         : `Request failed with status ${response.status}`;
-    throw new Error(message);
+    const detail =
+      parsedBody && typeof parsedBody === 'object' && 'detail' in parsedBody
+        ? String((parsedBody as { detail?: unknown }).detail ?? '')
+        : '';
+    throw new Error(detail ? `${message}: ${detail}` : message);
   }
 
   return schema.parse(parsedBody);

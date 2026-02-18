@@ -1,4 +1,4 @@
-import type { GoogleSearchIcpFilters } from './googleSearch.adapter.js';
+import type { DiscoveryIcpFilters } from './discovery.types.js';
 
 export interface LinkedInScrapeDiscoveryRequest {
   icpProfileId?: string;
@@ -6,7 +6,7 @@ export interface LinkedInScrapeDiscoveryRequest {
   cursor?: string;
   correlationId?: string;
   query?: string;
-  filters?: GoogleSearchIcpFilters;
+  filters?: DiscoveryIcpFilters;
 }
 
 export interface LinkedInScrapedLead {

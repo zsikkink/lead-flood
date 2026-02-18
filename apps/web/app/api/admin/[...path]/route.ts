@@ -18,9 +18,9 @@ function sanitizeBaseUrl(rawValue: string): string {
 }
 
 function buildTargetUrl(request: NextRequest, pathSegments: string[]): string {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const apiBaseUrl = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!apiBaseUrl) {
-    throw new Error('NEXT_PUBLIC_API_BASE_URL is not configured on web server');
+    throw new Error('API_BASE_URL (or NEXT_PUBLIC_API_BASE_URL) is not configured on web server');
   }
 
   if (pathSegments.length === 0) {
