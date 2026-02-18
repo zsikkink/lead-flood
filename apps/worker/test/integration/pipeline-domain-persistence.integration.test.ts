@@ -127,13 +127,14 @@ describe('pipeline domain persistence integration', () => {
       fetchImpl: vi.fn(async () => {
         return new Response(
           JSON.stringify({
-            items: [
-              {
-                cacheId: 'google-cache-1',
-                title: 'Acme Retail',
-                link: 'https://acme.test/about',
-              },
-            ],
+            web: {
+              results: [
+                {
+                  title: 'Acme Retail',
+                  url: 'https://acme.test/about',
+                },
+              ],
+            },
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
