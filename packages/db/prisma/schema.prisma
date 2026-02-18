@@ -13,6 +13,9 @@ enum LeadStatus {
   processing
   enriched
   failed
+  messaged
+  replied
+  cold
 }
 
 enum JobStatus {
@@ -160,6 +163,13 @@ enum LabelSource {
   MANUAL
 }
 
+enum ReplyClassification {
+  INTERESTED
+  NOT_INTERESTED
+  OUT_OF_OFFICE
+  UNSUBSCRIBE
+}
+
 model User {
   id          String    @id @default(cuid())
   email       String    @unique
@@ -193,6 +203,7 @@ model Lead {
   firstName      String
   lastName       String
   email          String        @unique
+  phone          String?
   source         String
   status         LeadStatus    @default(new)
   enrichmentData Json?
@@ -211,6 +222,7 @@ model Lead {
 
   @@index([status])
   @@index([source])
+  @@index([phone])
 }
 
 model JobExecution {
@@ -261,6 +273,7 @@ model IcpProfile {
   maxCompanySize       Int?
   requiredTechnologies String[]             @default([])
   excludedDomains      String[]             @default([])
+  featureList          Json?
   isActive             Boolean              @default(true)
   createdByUserId      String?
   createdByUser        User?                @relation("IcpCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -508,6 +521,9 @@ model MessageDraft {
   approvedByUserId     String?
   approvedAt           DateTime?
   rejectedReason       String?
+  followUpNumber       Int                   @default(0)
+  pitchedFeature       String?
+  parentMessageSendId  String?
   variants             MessageVariant[]
   messageSends         MessageSend[]
   createdAt            DateTime              @default(now())
@@ -538,31 +554,36 @@ model MessageVariant {
 }
 
 model MessageSend {
-  id                String            @id @default(cuid())
-  leadId            String
-  lead              Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  messageDraftId    String
-  messageDraft      MessageDraft      @relation(fields: [messageDraftId], references: [id], onDelete: Cascade)
-  messageVariantId  String
-  messageVariant    MessageVariant    @relation(fields: [messageVariantId], references: [id], onDelete: Cascade)
-  channel           MessageChannel    @default(EMAIL)
-  provider          SendProvider      @default(RESEND)
-  providerMessageId String?
-  status            MessageSendStatus @default(QUEUED)
-  idempotencyKey    String            @unique
-  scheduledAt       DateTime?
-  sentAt            DateTime?
-  deliveredAt       DateTime?
-  repliedAt         DateTime?
-  failureCode       String?
-  failureReason     String?
-  feedbackEvents    FeedbackEvent[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                      String            @id @default(cuid())
+  leadId                  String
+  lead                    Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messageDraftId          String
+  messageDraft            MessageDraft      @relation(fields: [messageDraftId], references: [id], onDelete: Cascade)
+  messageVariantId        String
+  messageVariant          MessageVariant    @relation(fields: [messageVariantId], references: [id], onDelete: Cascade)
+  channel                 MessageChannel    @default(EMAIL)
+  provider                SendProvider      @default(RESEND)
+  providerMessageId       String?
+  providerConversationId  String?
+  status                  MessageSendStatus @default(QUEUED)
+  idempotencyKey          String            @unique
+  scheduledAt             DateTime?
+  sentAt                  DateTime?
+  deliveredAt             DateTime?
+  repliedAt               DateTime?
+  followUpNumber          Int               @default(0)
+  nextFollowUpAfter       DateTime?
+  failureCode             String?
+  failureReason           String?
+  feedbackEvents          FeedbackEvent[]
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
   @@index([leadId, createdAt])
   @@index([status])
   @@index([messageDraftId])
+  @@index([providerConversationId])
+  @@index([status, followUpNumber, nextFollowUpAfter])
 }
 
 model FeedbackEvent {
@@ -576,6 +597,8 @@ model FeedbackEvent {
   providerEventId String?
   dedupeKey       String            @unique
   payloadJson     Json?
+  replyText           String?
+  replyClassification ReplyClassification?
   occurredAt      DateTime
   createdAt       DateTime          @default(now())
 
@@ -584,6 +607,7 @@ model FeedbackEvent {
   @@index([leadId, occurredAt])
   @@index([messageSendId])
   @@index([eventType])
+  @@index([leadId, eventType])
 }
 
 model TrainingLabel {
