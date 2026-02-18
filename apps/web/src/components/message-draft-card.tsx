@@ -148,7 +148,11 @@ export function MessageDraftCard({ draft, onAction }: MessageDraftCardProps) {
         <div className="mt-4">
           {showReject ? (
             <div className="flex gap-2">
+              <label htmlFor={`reject-reason-${draft.id}`} className="sr-only">
+                Rejection reason
+              </label>
               <input
+                id={`reject-reason-${draft.id}`}
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="Rejection reason..."
@@ -158,7 +162,7 @@ export function MessageDraftCard({ draft, onAction }: MessageDraftCardProps) {
                 type="button"
                 disabled={!rejectReason.trim() || !!actionInProgress}
                 onClick={handleReject}
-                className="rounded-lg bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground disabled:opacity-50"
+                className="rounded-lg bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground transition-colors hover:bg-destructive/80 disabled:opacity-50"
               >
                 Confirm Reject
               </button>

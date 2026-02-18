@@ -39,6 +39,10 @@ export function FunnelChart({ data }: FunnelChartProps) {
             tick={{ fontSize: 11, fill: 'hsl(240 5% 55%)' }}
             axisLine={{ stroke: 'hsl(240 8% 18%)' }}
             tickLine={false}
+            interval={0}
+            angle={-30}
+            textAnchor="end"
+            height={60}
           />
           <YAxis
             tick={{ fontSize: 11, fill: 'hsl(240 5% 55%)' }}

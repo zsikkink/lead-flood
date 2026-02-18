@@ -44,7 +44,7 @@ export default function DashboardPage() {
         <select
           value={icpFilter ?? ''}
           onChange={(e) => setIcpFilter(e.target.value || undefined)}
-          className="h-9 rounded-xl border border-border/50 bg-card px-3 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="h-9 cursor-pointer rounded-xl border border-border/50 bg-card px-3 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
           <option value="">All ICPs</option>
           {icps.data?.items.map((icp) => (

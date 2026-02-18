@@ -138,6 +138,8 @@ export default function IcpDetailPage() {
                     className={`h-2 w-2 rounded-full ${
                       rule.isActive ? 'bg-zbooni-green' : 'bg-gray-500'
                     }`}
+                    role="img"
+                    aria-label={rule.isActive ? 'Active' : 'Inactive'}
                     title={rule.isActive ? 'Active' : 'Inactive'}
                   />
                 </div>

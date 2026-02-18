@@ -21,18 +21,20 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
           type="button"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/50 text-sm transition-colors hover:bg-accent disabled:opacity-30"
+          aria-label="Previous page"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border/50 text-sm transition-colors hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-30"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <span className="inline-flex h-8 items-center px-2 text-xs text-muted-foreground">
+        <span className="inline-flex h-11 items-center px-2 text-xs text-muted-foreground">
           {page} / {totalPages}
         </span>
         <button
           type="button"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/50 text-sm transition-colors hover:bg-accent disabled:opacity-30"
+          aria-label="Next page"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border/50 text-sm transition-colors hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-30"
         >
           <ChevronRight className="h-4 w-4" />
         </button>

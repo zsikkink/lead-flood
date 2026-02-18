@@ -102,6 +102,7 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    line-height: 1.6;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -122,4 +123,16 @@
 
 .zbooni-gradient-border {
   border-image: linear-gradient(135deg, #7BFF6B 0%, #3CC8E0 100%) 1;
+}
+
+/* ── Accessibility: reduced motion ─────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

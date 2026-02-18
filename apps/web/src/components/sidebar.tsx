@@ -27,7 +27,7 @@ export function Sidebar() {
     <aside className="hidden w-[260px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
       {/* Brand */}
       <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-6">
-        <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <rect width="32" height="32" rx="8" fill="url(#sideGrad)" />
           <path d="M8 12h16l-8 8-8-8z" fill="#1C1C2E" opacity="0.9" />
           <defs>
@@ -77,7 +77,7 @@ export function Sidebar() {
               />
               {label}
               {isActive ? (
-                <div className="ml-auto h-1.5 w-1.5 rounded-full bg-zbooni-green" />
+                <div className="ml-auto h-1.5 w-1.5 rounded-full bg-zbooni-green" aria-hidden="true" />
               ) : null}
             </Link>
           );
@@ -90,7 +90,7 @@ export function Sidebar() {
           <p className="text-[11px] font-medium text-muted-foreground">Pipeline Status</p>
           <p className="mt-0.5 text-xs font-semibold text-sidebar-foreground">All systems running</p>
           <div className="mt-2 flex items-center gap-1.5">
-            <div className="h-1.5 w-1.5 rounded-full bg-zbooni-green animate-pulse" />
+            <div className="h-1.5 w-1.5 rounded-full bg-zbooni-green animate-pulse" aria-hidden="true" />
             <span className="text-[10px] text-muted-foreground">Live</span>
           </div>
         </div>

@@ -45,8 +45,10 @@ export function Header() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="rounded-lg p-2 text-muted-foreground hover:bg-accent lg:hidden"
+            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary/40 lg:hidden"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Open navigation menu"
+            aria-expanded={mobileMenuOpen}
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -69,7 +71,8 @@ export function Header() {
           <button
             type="button"
             onClick={logout}
-            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            aria-label="Sign out"
             title="Sign out"
           >
             <LogOut className="h-4 w-4" />

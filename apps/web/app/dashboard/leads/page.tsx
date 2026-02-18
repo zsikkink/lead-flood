@@ -54,7 +54,7 @@ export default function LeadsPage() {
             setStatusFilter((e.target.value || undefined) as LeadStatus | undefined);
             setPage(1);
           }}
-          className="h-9 rounded-xl border border-border/50 bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="h-9 cursor-pointer rounded-xl border border-border/50 bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
@@ -68,7 +68,7 @@ export default function LeadsPage() {
             setScoreBandFilter((e.target.value || undefined) as LeadScoreBand | undefined);
             setPage(1);
           }}
-          className="h-9 rounded-xl border border-border/50 bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="h-9 cursor-pointer rounded-xl border border-border/50 bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
           <option value="">All scores</option>
           {SCORE_BANDS.map((b) => (

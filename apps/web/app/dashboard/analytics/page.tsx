@@ -34,7 +34,7 @@ export default function AnalyticsPage() {
       {/* Score Distribution */}
       {scoreDist.data ? (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {scoreDist.data.bands.map((band) => (
               <KpiCard key={band.scoreBand} label={band.scoreBand} value={band.count} />
             ))}
