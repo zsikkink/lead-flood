@@ -100,6 +100,9 @@ importers:
       '@lead-flood/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@lead-flood/discovery':
+        specifier: workspace:*
+        version: link:../../packages/discovery
       '@lead-flood/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -134,6 +137,16 @@ importers:
       prisma:
         specifier: ^6.2.1
         version: 6.19.2(typescript@5.9.3)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+
+  packages/discovery:
+    dependencies:
+      '@lead-flood/db':
+        specifier: workspace:*
+        version: link:../db
+    devDependencies:
       tsx:
         specifier: ^4.19.2
         version: 4.21.0

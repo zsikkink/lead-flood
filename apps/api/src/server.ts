@@ -11,6 +11,9 @@ import {
   ListLeadsResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
+  type RunDiscoverySeedRequest,
+  type RunDiscoveryTasksRequest,
+  type TriggerJobRunResponse,
   type CreateLeadRequest,
   type ListLeadsQuery,
   type ListLeadsResponse,
@@ -23,6 +26,7 @@ import {
 
 import type { ApiEnv } from './env.js';
 import { registerDiscoveryRoutes } from './modules/discovery/discovery.routes.js';
+import { registerDiscoveryAdminRoutes } from './modules/discovery-admin/discovery-admin.routes.js';
 import type { DiscoveryRunJobPayload } from './modules/discovery/discovery.service.js';
 import { registerEnrichmentRoutes } from './modules/enrichment/enrichment.routes.js';
 import { registerIcpRoutes } from './modules/icp/icp.routes.js';
@@ -69,6 +73,9 @@ export interface BuildServerOptions {
   authenticateUser: (input: LoginRequest) => Promise<LoginResponse | null>;
   createLeadAndEnqueue: (input: CreateLeadRequest) => Promise<{ leadId: string; jobId: string }>;
   enqueueDiscoveryRun?: (payload: DiscoveryRunJobPayload) => Promise<void>;
+  triggerDiscoverySeedJob?: (input: RunDiscoverySeedRequest) => Promise<TriggerJobRunResponse>;
+  triggerDiscoveryTaskRun?: (input: RunDiscoveryTasksRequest) => Promise<TriggerJobRunResponse>;
+  adminApiKey?: string;
   getLeadById: (leadId: string) => Promise<LeadRecord | null>;
   listLeads: (query: ListLeadsQuery) => Promise<ListLeadsResponse>;
   getJobById: (jobId: string) => Promise<JobRecord | null>;
@@ -242,6 +249,15 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   }
   registerEnrichmentRoutes(app);
   registerScoringRoutes(app);
+  registerDiscoveryAdminRoutes(app, {
+    ...(options.adminApiKey ? { adminApiKey: options.adminApiKey } : {}),
+    ...(options.triggerDiscoverySeedJob
+      ? { triggerDiscoverySeedJob: options.triggerDiscoverySeedJob }
+      : {}),
+    ...(options.triggerDiscoveryTaskRun
+      ? { triggerDiscoveryTaskRun: options.triggerDiscoveryTaskRun }
+      : {}),
+  });
 
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send(

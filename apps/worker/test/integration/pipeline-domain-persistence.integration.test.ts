@@ -2,8 +2,10 @@ import type PgBoss from 'pg-boss';
 import { prisma } from '@lead-flood/db';
 import {
   ApolloDiscoveryAdapter,
+  BraveSearchAdapter,
   ClearbitAdapter,
   CompanySearchAdapter,
+  GooglePlacesAdapter,
   GoogleSearchAdapter,
   HunterAdapter,
   LinkedInScrapeAdapter,
@@ -162,6 +164,18 @@ describe('pipeline domain persistence integration', () => {
           minRequestIntervalMs: 0,
           fetchImpl: vi.fn() as unknown as typeof fetch,
         }),
+        braveSearchAdapter: new BraveSearchAdapter({
+          enabled: false,
+          apiKey: undefined,
+          minRequestIntervalMs: 0,
+          fetchImpl: vi.fn() as unknown as typeof fetch,
+        }),
+        googlePlacesAdapter: new GooglePlacesAdapter({
+          enabled: false,
+          apiKey: undefined,
+          minRequestIntervalMs: 0,
+          fetchImpl: vi.fn() as unknown as typeof fetch,
+        }),
         googleSearchAdapter,
         linkedInScrapeAdapter: new LinkedInScrapeAdapter({
           enabled: false,
@@ -175,10 +189,13 @@ describe('pipeline domain persistence integration', () => {
         }),
         discoveryEnabled: true,
         apolloEnabled: false,
+        braveSearchEnabled: false,
+        googlePlacesEnabled: false,
         googleSearchEnabled: true,
         linkedInScrapeEnabled: false,
         companySearchEnabled: false,
         defaultProvider: 'GOOGLE_SEARCH',
+        providerOrder: [],
         defaultEnrichmentProvider: 'HUNTER',
       },
     );

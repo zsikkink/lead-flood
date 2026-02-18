@@ -16,6 +16,7 @@
   "dependencies": {
     "@lead-flood/contracts": "workspace:*",
     "@lead-flood/db": "workspace:*",
+    "@lead-flood/discovery": "workspace:*",
     "@lead-flood/observability": "workspace:*",
     "@lead-flood/providers": "workspace:*",
     "pg-boss": "^10.3.0",
