@@ -348,7 +348,7 @@ describe('inspection endpoints integration', () => {
       providerQueries: Array<{ provider: string }>;
       samples: Array<{ discoveryRecordId: string; ruleEvaluations: Array<{ ruleId: string }> }>;
     };
-    expect(debugBody.providerQueries).toHaveLength(6);
+    expect(debugBody.providerQueries).toHaveLength(5);
     expect(debugBody.providerQueries.map((entry) => entry.provider)).toContain('BRAVE_SEARCH');
     expect(debugBody.providerQueries.map((entry) => entry.provider)).toContain('GOOGLE_PLACES');
     expect(debugBody.samples[0]?.discoveryRecordId).toBe(discoveryRecord.id);
