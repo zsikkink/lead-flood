@@ -84,6 +84,23 @@ export async function handleFollowupCheckJob(
       orderBy: { nextFollowUpAfter: 'asc' },
     });
 
+    // Batch-fetch previously pitched features for all eligible leads
+    const leadIds = [...new Set(eligibleSends.map((s) => s.leadId))];
+    const allPreviousDrafts = leadIds.length > 0
+      ? await prisma.messageDraft.findMany({
+          where: { leadId: { in: leadIds }, pitchedFeature: { not: null } },
+          select: { leadId: true, pitchedFeature: true },
+        })
+      : [];
+    const pitchedByLead = new Map<string, string[]>();
+    for (const d of allPreviousDrafts) {
+      if (d.pitchedFeature) {
+        const list = pitchedByLead.get(d.leadId) ?? [];
+        list.push(d.pitchedFeature);
+        pitchedByLead.set(d.leadId, list);
+      }
+    }
+
     let enqueuedCount = 0;
 
     for (const send of eligibleSends) {
@@ -97,16 +114,14 @@ export async function handleFollowupCheckJob(
         continue;
       }
 
-      // Collect previously pitched features from all drafts for this lead
-      const previousDrafts = await prisma.messageDraft.findMany({
-        where: { leadId: send.leadId, pitchedFeature: { not: null } },
-        select: { pitchedFeature: true },
-      });
-      const previouslyPitchedFeatures = previousDrafts
-        .map((d) => d.pitchedFeature)
-        .filter((f): f is string => f !== null);
-
+      const previouslyPitchedFeatures = pitchedByLead.get(send.leadId) ?? [];
       const icpProfileId = send.messageDraft.icpProfileId;
+
+      // Clear first (idempotent guard) — prevents double-enqueue on crash
+      await prisma.messageSend.update({
+        where: { id: send.id },
+        data: { nextFollowUpAfter: null },
+      });
 
       // Enqueue message.generate in follow-up mode
       await deps.boss.send(
@@ -124,14 +139,11 @@ export async function handleFollowupCheckJob(
           promptVersion: 'v1-followup',
           correlationId: correlationId ?? job.id,
         } satisfies MessageGenerateJobPayload,
-        MESSAGE_GENERATE_RETRY_OPTIONS,
+        {
+          ...MESSAGE_GENERATE_RETRY_OPTIONS,
+          singletonKey: `followup:${send.id}:${send.followUpNumber + 1}`,
+        },
       );
-
-      // Mark as consumed — prevent double-enqueue
-      await prisma.messageSend.update({
-        where: { id: send.id },
-        data: { nextFollowUpAfter: null },
-      });
 
       enqueuedCount++;
     }

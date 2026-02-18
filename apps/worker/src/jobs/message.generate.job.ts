@@ -213,7 +213,7 @@ export async function handleMessageGenerateJob(
 
     // Auto-send for follow-ups
     if (autoApprove && deps?.boss) {
-      const selectedVariant = draft.variants[0]; // variant_a for auto-approved
+      const selectedVariant = draft.variants.find((v) => v.variantKey === 'variant_a');
       if (selectedVariant) {
         const sendRecord = await prisma.messageSend.create({
           data: {
