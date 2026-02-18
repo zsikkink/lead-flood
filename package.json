@@ -23,6 +23,7 @@
     "db:link": "bash scripts/db/supabase-link.sh",
     "db:pull:drift": "bash scripts/db/pull-drift.sh",
     "db:prisma:sync": "bash scripts/db/prisma-sync.sh",
+    "db:push:local-to-remote": "bash scripts/db/push-local-to-remote.sh",
     "db:seed": "pnpm --filter @lead-flood/db prisma:seed",
     "icp:seed": "pnpm --filter @lead-flood/db build && pnpm --filter @lead-flood/worker exec tsx ../../scripts/icp/seed-zbooni-icps.ts",
     "discovery:seed": "pnpm --filter @lead-flood/discovery seed",

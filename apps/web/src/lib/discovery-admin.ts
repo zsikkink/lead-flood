@@ -13,22 +13,6 @@ import {
   type RunDiscoveryTasksRequest,
 } from '@lead-flood/contracts';
 
-const ADMIN_KEY_STORAGE_KEY = 'lead-flood.admin-api-key';
-
-export function readStoredAdminApiKey(): string {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-  return window.localStorage.getItem(ADMIN_KEY_STORAGE_KEY) ?? '';
-}
-
-export function writeStoredAdminApiKey(value: string): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.localStorage.setItem(ADMIN_KEY_STORAGE_KEY, value);
-}
-
 function toQuery(params: Record<string, string | number | boolean | undefined | null>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -42,28 +26,23 @@ function toQuery(params: Record<string, string | number | boolean | undefined | 
 }
 
 async function requestJson<T>({
-  baseUrl,
   path,
-  adminKey,
   method = 'GET',
   body,
   schema,
 }: {
-  baseUrl: string;
   path: string;
-  adminKey: string;
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   schema: { parse: (input: unknown) => T };
 }): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      'content-type': 'application/json',
-      ...(adminKey ? { 'x-admin-key': adminKey } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { 'content-type': 'application/json' };
+    init.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(path, init);
 
   const parsedBody = await response.json().catch(() => null);
   if (!response.ok) {
@@ -120,58 +99,42 @@ export function queryFromJobRunFilters(query: JobRunListQuery): string {
 }
 
 export async function fetchAdminLeads(
-  baseUrl: string,
-  adminKey: string,
   query: string,
 ) {
   return requestJson({
-    baseUrl,
-    path: `/v1/admin/leads${query}`,
-    adminKey,
+    path: `/api/admin/leads${query}`,
     schema: AdminListLeadsResponseSchema,
   });
 }
 
-export async function fetchAdminLeadDetail(baseUrl: string, adminKey: string, id: string) {
+export async function fetchAdminLeadDetail(id: string) {
   return requestJson({
-    baseUrl,
-    path: `/v1/admin/leads/${id}`,
-    adminKey,
+    path: `/api/admin/leads/${id}`,
     schema: AdminLeadDetailResponseSchema,
   });
 }
 
 export async function fetchAdminSearchTasks(
-  baseUrl: string,
-  adminKey: string,
   query: string,
 ) {
   return requestJson({
-    baseUrl,
-    path: `/v1/admin/search-tasks${query}`,
-    adminKey,
+    path: `/api/admin/search-tasks${query}`,
     schema: AdminListSearchTasksResponseSchema,
   });
 }
 
-export async function fetchAdminSearchTaskDetail(baseUrl: string, adminKey: string, id: string) {
+export async function fetchAdminSearchTaskDetail(id: string) {
   return requestJson({
-    baseUrl,
-    path: `/v1/admin/search-tasks/${id}`,
-    adminKey,
+    path: `/api/admin/search-tasks/${id}`,
     schema: AdminSearchTaskDetailResponseSchema,
   });
 }
 
 export async function triggerDiscoverySeed(
-  baseUrl: string,
-  adminKey: string,
   payload: RunDiscoverySeedRequest,
 ) {
   return requestJson({
-    baseUrl,
-    path: '/v1/admin/jobs/discovery/seed',
-    adminKey,
+    path: '/api/admin/jobs/discovery/seed',
     method: 'POST',
     body: payload,
     schema: TriggerJobRunResponseSchema,
@@ -179,34 +142,26 @@ export async function triggerDiscoverySeed(
 }
 
 export async function triggerDiscoveryRun(
-  baseUrl: string,
-  adminKey: string,
   payload: RunDiscoveryTasksRequest,
 ) {
   return requestJson({
-    baseUrl,
-    path: '/v1/admin/jobs/discovery/run',
-    adminKey,
+    path: '/api/admin/jobs/discovery/run',
     method: 'POST',
     body: payload,
     schema: TriggerJobRunResponseSchema,
   });
 }
 
-export async function fetchJobRuns(baseUrl: string, adminKey: string, query: string) {
+export async function fetchJobRuns(query: string) {
   return requestJson({
-    baseUrl,
-    path: `/v1/admin/jobs/runs${query}`,
-    adminKey,
+    path: `/api/admin/jobs/runs${query}`,
     schema: ListJobRunsResponseSchema,
   });
 }
 
-export async function fetchJobRunDetail(baseUrl: string, adminKey: string, id: string) {
+export async function fetchJobRunDetail(id: string) {
   return requestJson({
-    baseUrl,
-    path: `/v1/admin/jobs/runs/${id}`,
-    adminKey,
+    path: `/api/admin/jobs/runs/${id}`,
     schema: JobRunDetailResponseSchema,
   });
 }

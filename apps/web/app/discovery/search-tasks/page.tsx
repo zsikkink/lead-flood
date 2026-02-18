@@ -1,15 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AdminListSearchTasksQuery, AdminListSearchTasksResponse } from '@lead-flood/contracts';
 
 import {
   fetchAdminSearchTasks,
   queryFromSearchTaskFilters,
-  readStoredAdminApiKey,
 } from '../../../src/lib/discovery-admin';
-import { getWebEnv } from '../../../src/lib/env';
 
 const DEFAULT_QUERY: AdminListSearchTasksQuery = {
   page: 1,
@@ -33,10 +31,6 @@ function statusClassName(status: string): string {
 }
 
 export default function SearchTasksPage() {
-  const env = getWebEnv();
-  const apiBaseUrl = useMemo(() => env.NEXT_PUBLIC_API_BASE_URL, [env.NEXT_PUBLIC_API_BASE_URL]);
-
-  const [adminApiKey, setAdminApiKey] = useState('');
   const [query, setQuery] = useState<AdminListSearchTasksQuery>(DEFAULT_QUERY);
   const [data, setData] = useState<AdminListSearchTasksResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,18 +38,10 @@ export default function SearchTasksPage() {
 
   const loadTasks = useCallback(
     async () => {
-      if (!adminApiKey) {
-        setLoading(false);
-        return;
-      }
       setLoading(true);
       setError(null);
       try {
-        const result = await fetchAdminSearchTasks(
-          apiBaseUrl,
-          adminApiKey,
-          queryFromSearchTaskFilters(query),
-        );
+        const result = await fetchAdminSearchTasks(queryFromSearchTaskFilters(query));
         setData(result);
       } catch (loadError: unknown) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load search tasks');
@@ -63,20 +49,12 @@ export default function SearchTasksPage() {
         setLoading(false);
       }
     },
-    [adminApiKey, apiBaseUrl, query],
+    [query],
   );
 
   useEffect(() => {
-    setAdminApiKey(readStoredAdminApiKey() || env.NEXT_PUBLIC_ADMIN_API_KEY || '');
-  }, [env.NEXT_PUBLIC_ADMIN_API_KEY]);
-
-  useEffect(() => {
-    if (!adminApiKey) {
-      setLoading(false);
-      return;
-    }
     void loadTasks();
-  }, [adminApiKey, loadTasks]);
+  }, [loadTasks]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 

@@ -2,50 +2,41 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AdminLeadDetailResponse } from '@lead-flood/contracts';
 
-import { fetchAdminLeadDetail, readStoredAdminApiKey } from '../../../../src/lib/discovery-admin';
-import { getWebEnv } from '../../../../src/lib/env';
+import { fetchAdminLeadDetail } from '../../../../src/lib/discovery-admin';
 
 export default function DiscoveryLeadDetailPage() {
   const params = useParams<{ id: string }>();
-  const env = getWebEnv();
-  const apiBaseUrl = useMemo(() => env.NEXT_PUBLIC_API_BASE_URL, [env.NEXT_PUBLIC_API_BASE_URL]);
   const leadId = params.id;
 
-  const [adminApiKey, setAdminApiKey] = useState('');
   const [data, setData] = useState<AdminLeadDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadDetail = useCallback(async () => {
-    if (!leadId || !adminApiKey) {
+    if (!leadId) {
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchAdminLeadDetail(apiBaseUrl, adminApiKey, leadId);
+      const result = await fetchAdminLeadDetail(leadId);
       setData(result);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load lead detail');
     } finally {
       setLoading(false);
     }
-  }, [adminApiKey, apiBaseUrl, leadId]);
+  }, [leadId]);
 
   useEffect(() => {
-    const fallback = env.NEXT_PUBLIC_ADMIN_API_KEY ?? '';
-    setAdminApiKey(readStoredAdminApiKey() || fallback);
-  }, [env.NEXT_PUBLIC_ADMIN_API_KEY]);
-
-  useEffect(() => {
-    if (!adminApiKey || !leadId) {
+    if (!leadId) {
       return;
     }
     void loadDetail();
-  }, [adminApiKey, leadId, loadDetail]);
+  }, [leadId, loadDetail]);
 
   return (
     <section className="split">

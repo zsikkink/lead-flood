@@ -14,7 +14,7 @@ The web app runs on Vercel and calls the API. Do not run Postgres on Vercel.
 
 Set for both Preview and Production (with environment-specific values):
 - `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_ADMIN_API_KEY` (if admin endpoints are protected)
+- `ADMIN_API_KEY` (server-only; used by `apps/web` route handlers for `/api/admin/*`)
 - optional: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
 Do not put database credentials in the Vercel web project.
@@ -74,4 +74,3 @@ Expected:
 - Do not run `prisma migrate deploy` for production rollout.
 - Do not apply manual schema edits in production without SQL migration capture.
 - Do not commit service-role keys or DB passwords.
-

@@ -100,6 +100,50 @@ pnpm db:verify:prod
 pnpm db:prisma:sync
 ```
 
+## Data Migration: Local -> Remote
+
+Use `pnpm db:push:local-to-remote` to move existing local development data into the remote Supabase database.
+
+Required env:
+
+- `REMOTE_DATABASE_URL` (must include `sslmode=require`)
+
+Optional env:
+
+- `LOCAL_DATABASE_URL` (defaults to `postgresql://postgres:postgres@localhost:5434/lead_flood`)
+- `TABLES_INCLUDE` (comma-separated table list)
+- `TABLES_EXCLUDE` (comma-separated table list)
+- `CONFIRM_REMOTE_OVERWRITE=1` (required to allow remote writes)
+
+Dry run (safe default, no remote writes):
+
+```bash
+REMOTE_DATABASE_URL='postgresql://...sslmode=require' pnpm db:push:local-to-remote
+```
+
+Execute overwrite migration (destructive on target tables):
+
+```bash
+CONFIRM_REMOTE_OVERWRITE=1 \
+REMOTE_DATABASE_URL='postgresql://...sslmode=require' \
+pnpm db:push:local-to-remote
+```
+
+Example table-scoped run:
+
+```bash
+CONFIRM_REMOTE_OVERWRITE=1 \
+REMOTE_DATABASE_URL='postgresql://...sslmode=require' \
+TABLES_INCLUDE='search_tasks,businesses,sources,business_evidence,job_runs' \
+pnpm db:push:local-to-remote
+```
+
+Notes:
+
+- The script validates schema/table compatibility before any write.
+- If `CONFIRM_REMOTE_OVERWRITE` is not set, it exits after plan/count reporting.
+- If restore fails via Supabase pooler URL, retry with direct Postgres host URL.
+
 ## Forbidden Production Actions
 
 - Do not use `prisma migrate deploy` as the production migration driver.

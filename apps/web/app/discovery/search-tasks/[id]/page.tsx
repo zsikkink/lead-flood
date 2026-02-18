@@ -2,52 +2,41 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AdminSearchTaskDetailResponse } from '@lead-flood/contracts';
 
-import {
-  fetchAdminSearchTaskDetail,
-  readStoredAdminApiKey,
-} from '../../../../src/lib/discovery-admin';
-import { getWebEnv } from '../../../../src/lib/env';
+import { fetchAdminSearchTaskDetail } from '../../../../src/lib/discovery-admin';
 
 export default function SearchTaskDetailPage() {
   const params = useParams<{ id: string }>();
-  const env = getWebEnv();
-  const apiBaseUrl = useMemo(() => env.NEXT_PUBLIC_API_BASE_URL, [env.NEXT_PUBLIC_API_BASE_URL]);
   const taskId = params.id;
 
-  const [adminApiKey, setAdminApiKey] = useState('');
   const [data, setData] = useState<AdminSearchTaskDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadDetail = useCallback(async () => {
-    if (!taskId || !adminApiKey) {
+    if (!taskId) {
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchAdminSearchTaskDetail(apiBaseUrl, adminApiKey, taskId);
+      const result = await fetchAdminSearchTaskDetail(taskId);
       setData(result);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load task detail');
     } finally {
       setLoading(false);
     }
-  }, [adminApiKey, apiBaseUrl, taskId]);
+  }, [taskId]);
 
   useEffect(() => {
-    setAdminApiKey(readStoredAdminApiKey() || env.NEXT_PUBLIC_ADMIN_API_KEY || '');
-  }, [env.NEXT_PUBLIC_ADMIN_API_KEY]);
-
-  useEffect(() => {
-    if (!adminApiKey || !taskId) {
+    if (!taskId) {
       return;
     }
     void loadDetail();
-  }, [adminApiKey, taskId, loadDetail]);
+  }, [taskId, loadDetail]);
 
   return (
     <section className="split">

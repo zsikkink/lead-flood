@@ -1,17 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { JobRunListQuery, ListJobRunsResponse } from '@lead-flood/contracts';
 
 import {
   fetchJobRuns,
   queryFromJobRunFilters,
-  readStoredAdminApiKey,
   triggerDiscoveryRun,
   triggerDiscoverySeed,
 } from '../../../src/lib/discovery-admin';
-import { getWebEnv } from '../../../src/lib/env';
 
 const DEFAULT_JOBS_QUERY: JobRunListQuery = {
   page: 1,
@@ -34,10 +32,6 @@ function statusClassName(status: string): string {
 }
 
 export default function JobsPage() {
-  const env = getWebEnv();
-  const apiBaseUrl = useMemo(() => env.NEXT_PUBLIC_API_BASE_URL, [env.NEXT_PUBLIC_API_BASE_URL]);
-
-  const [adminApiKey, setAdminApiKey] = useState('');
   const [jobsQuery, setJobsQuery] = useState<JobRunListQuery>(DEFAULT_JOBS_QUERY);
   const [jobsData, setJobsData] = useState<ListJobRunsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,14 +52,10 @@ export default function JobsPage() {
 
   const loadRuns = useCallback(
     async () => {
-      if (!adminApiKey) {
-        setLoading(false);
-        return;
-      }
       setLoading(true);
       setError(null);
       try {
-        const result = await fetchJobRuns(apiBaseUrl, adminApiKey, queryFromJobRunFilters(jobsQuery));
+        const result = await fetchJobRuns(queryFromJobRunFilters(jobsQuery));
         setJobsData(result);
       } catch (loadError: unknown) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load job runs');
@@ -73,20 +63,12 @@ export default function JobsPage() {
         setLoading(false);
       }
     },
-    [adminApiKey, apiBaseUrl, jobsQuery],
+    [jobsQuery],
   );
 
   useEffect(() => {
-    setAdminApiKey(readStoredAdminApiKey() || env.NEXT_PUBLIC_ADMIN_API_KEY || '');
-  }, [env.NEXT_PUBLIC_ADMIN_API_KEY]);
-
-  useEffect(() => {
-    if (!adminApiKey) {
-      setLoading(false);
-      return;
-    }
     void loadRuns();
-  }, [adminApiKey, loadRuns]);
+  }, [loadRuns]);
 
   const runSeed = async () => {
     setError(null);
@@ -104,7 +86,7 @@ export default function JobsPage() {
         .map((value) => value.trim())
         .filter(Boolean);
 
-      const result = await triggerDiscoverySeed(apiBaseUrl, adminApiKey, {
+      const result = await triggerDiscoverySeed({
         profile: seedProfile,
         maxTasks: seedMaxTasks,
         maxPages: seedMaxPages,
@@ -123,7 +105,7 @@ export default function JobsPage() {
   const runDiscovery = async () => {
     setError(null);
     try {
-      const result = await triggerDiscoveryRun(apiBaseUrl, adminApiKey, {
+      const result = await triggerDiscoveryRun({
         maxTasks: runMaxTasks,
         concurrency: runConcurrency,
         timeBucket: runTimeBucket || undefined,
@@ -195,7 +177,7 @@ export default function JobsPage() {
             <input value={seedLanguages} onChange={(event) => setSeedLanguages(event.target.value)} />
           </label>
         </div>
-        <button style={{ marginTop: 10 }} onClick={() => void runSeed()} disabled={!adminApiKey}>
+        <button style={{ marginTop: 10 }} onClick={() => void runSeed()}>
           Trigger Seed
         </button>
 
@@ -229,7 +211,7 @@ export default function JobsPage() {
             />
           </label>
         </div>
-        <button style={{ marginTop: 10 }} onClick={() => void runDiscovery()} disabled={!adminApiKey}>
+        <button style={{ marginTop: 10 }} onClick={() => void runDiscovery()}>
           Trigger Run
         </button>
 

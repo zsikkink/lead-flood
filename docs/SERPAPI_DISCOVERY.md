@@ -31,8 +31,9 @@ Set in `apps/api/.env.local` and `apps/web/.env.local` for admin endpoint protec
 
 ```bash
 ADMIN_API_KEY=your-local-admin-key
-NEXT_PUBLIC_ADMIN_API_KEY=your-local-admin-key
 ```
+
+Do not expose `ADMIN_API_KEY` in any `NEXT_PUBLIC_*` variable.
 
 ## Commands
 

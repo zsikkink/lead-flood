@@ -94,7 +94,7 @@ Set in `apps/web/.env.local`:
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://localhost:5050
-NEXT_PUBLIC_ADMIN_API_KEY=<set-admin-api-key>
+ADMIN_API_KEY=<set-admin-api-key>
 ```
 
 Set in `apps/worker/.env.local`:

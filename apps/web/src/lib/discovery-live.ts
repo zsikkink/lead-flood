@@ -60,15 +60,7 @@ export interface DiscoveryLiveSettings extends DiscoveryLiveSettingsState {
   setOnlyWhenRunning: (onlyWhenRunning: boolean) => void;
 }
 
-interface UseDiscoveryLiveSettingsOptions {
-  apiBaseUrl: string;
-  adminApiKey: string;
-}
-
-export function useDiscoveryLiveSettings({
-  apiBaseUrl,
-  adminApiKey,
-}: UseDiscoveryLiveSettingsOptions): DiscoveryLiveSettings {
+export function useDiscoveryLiveSettings(): DiscoveryLiveSettings {
   const [enabled, setEnabledState] = useState(false);
   const [intervalMs, setIntervalMsState] = useState(DISCOVERY_LIVE_DEFAULT_INTERVAL_MS);
   const [onlyWhenRunning, setOnlyWhenRunningState] = useState(true);
@@ -116,15 +108,8 @@ export function useDiscoveryLiveSettings({
   }, []);
 
   const checkRunningJobs = useCallback(async () => {
-    if (!apiBaseUrl || !adminApiKey) {
-      setHasRunningJobs(false);
-      return;
-    }
-
     try {
       const result = await fetchJobRuns(
-        apiBaseUrl,
-        adminApiKey,
         queryFromJobRunFilters({
           page: 1,
           pageSize: 1,
@@ -135,7 +120,7 @@ export function useDiscoveryLiveSettings({
     } catch {
       setHasRunningJobs(false);
     }
-  }, [adminApiKey, apiBaseUrl]);
+  }, []);
 
   useEffect(() => {
     if (!hydrated) {
@@ -147,18 +132,13 @@ export function useDiscoveryLiveSettings({
       return;
     }
 
-    if (!adminApiKey) {
-      setHasRunningJobs(false);
-      return;
-    }
-
     void checkRunningJobs();
     const timer = setInterval(() => {
       void checkRunningJobs();
     }, intervalMs);
 
     return () => clearInterval(timer);
-  }, [adminApiKey, checkRunningJobs, enabled, hydrated, intervalMs, onlyWhenRunning]);
+  }, [checkRunningJobs, enabled, hydrated, intervalMs, onlyWhenRunning]);
 
   const shouldPoll = useMemo(() => {
     if (!hydrated || !enabled) {
@@ -187,4 +167,3 @@ export function useDiscoveryLiveSettings({
     setOnlyWhenRunning,
   };
 }
-

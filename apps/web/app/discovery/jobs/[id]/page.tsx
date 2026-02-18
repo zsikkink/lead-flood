@@ -2,11 +2,10 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { JobRunDetailResponse } from '@lead-flood/contracts';
 
-import { fetchJobRunDetail, readStoredAdminApiKey } from '../../../../src/lib/discovery-admin';
-import { getWebEnv } from '../../../../src/lib/env';
+import { fetchJobRunDetail } from '../../../../src/lib/discovery-admin';
 
 function statusClassName(status: string): string {
   switch (status) {
@@ -25,41 +24,34 @@ function statusClassName(status: string): string {
 
 export default function JobRunDetailPage() {
   const params = useParams<{ id: string }>();
-  const env = getWebEnv();
-  const apiBaseUrl = useMemo(() => env.NEXT_PUBLIC_API_BASE_URL, [env.NEXT_PUBLIC_API_BASE_URL]);
   const runId = params.id;
 
-  const [adminApiKey, setAdminApiKey] = useState('');
   const [data, setData] = useState<JobRunDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadDetail = useCallback(async () => {
-    if (!runId || !adminApiKey) {
+    if (!runId) {
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchJobRunDetail(apiBaseUrl, adminApiKey, runId);
+      const result = await fetchJobRunDetail(runId);
       setData(result);
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load run detail');
     } finally {
       setLoading(false);
     }
-  }, [adminApiKey, apiBaseUrl, runId]);
+  }, [runId]);
 
   useEffect(() => {
-    setAdminApiKey(readStoredAdminApiKey() || env.NEXT_PUBLIC_ADMIN_API_KEY || '');
-  }, [env.NEXT_PUBLIC_ADMIN_API_KEY]);
-
-  useEffect(() => {
-    if (!adminApiKey || !runId) {
+    if (!runId) {
       return;
     }
     void loadDetail();
-  }, [adminApiKey, loadDetail, runId]);
+  }, [loadDetail, runId]);
 
   return (
     <section className="card">

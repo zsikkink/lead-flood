@@ -60,7 +60,7 @@ Primary: Supabase Postgres (fallback: Neon)
 ## Vercel (`apps/web`)
 
 - `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_ADMIN_API_KEY`
+- `ADMIN_API_KEY` (server-only)
 
 ## Commands
 
@@ -84,7 +84,7 @@ ENV_FILE=.env.production.local pnpm db:verify:prod
 2. Set framework preset to Next.js.
 3. Set env vars for Preview and Production:
 - `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_ADMIN_API_KEY`
+- `ADMIN_API_KEY` (server-only)
 4. Deploy.
 5. Verify API DB readiness:
 

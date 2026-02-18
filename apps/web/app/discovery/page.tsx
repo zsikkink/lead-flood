@@ -1,16 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { AdminListLeadsQuery, AdminListLeadsResponse } from '@lead-flood/contracts';
 
-import {
-  fetchAdminLeads,
-  queryFromLeadFilters,
-  readStoredAdminApiKey,
-  writeStoredAdminApiKey,
-} from '../../src/lib/discovery-admin';
-import { getWebEnv } from '../../src/lib/env';
+import { fetchAdminLeads, queryFromLeadFilters } from '../../src/lib/discovery-admin';
 
 const DEFAULT_QUERY: AdminListLeadsQuery = {
   page: 1,
@@ -19,10 +13,6 @@ const DEFAULT_QUERY: AdminListLeadsQuery = {
 };
 
 export default function DiscoveryLeadsPage() {
-  const env = getWebEnv();
-  const apiBaseUrl = useMemo(() => env.NEXT_PUBLIC_API_BASE_URL, [env.NEXT_PUBLIC_API_BASE_URL]);
-
-  const [adminApiKey, setAdminApiKey] = useState('');
   const [query, setQuery] = useState<AdminListLeadsQuery>(DEFAULT_QUERY);
   const [countriesInput, setCountriesInput] = useState('AE,SA,JO,EG');
   const [industriesInput, setIndustriesInput] = useState('');
@@ -32,14 +22,10 @@ export default function DiscoveryLeadsPage() {
 
   const loadLeads = useCallback(
     async () => {
-      if (!adminApiKey) {
-        setLoading(false);
-        return;
-      }
       setLoading(true);
       setError(null);
       try {
-        const result = await fetchAdminLeads(apiBaseUrl, adminApiKey, queryFromLeadFilters(query));
+        const result = await fetchAdminLeads(queryFromLeadFilters(query));
         setData(result);
       } catch (loadError: unknown) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load leads');
@@ -47,22 +33,12 @@ export default function DiscoveryLeadsPage() {
         setLoading(false);
       }
     },
-    [adminApiKey, apiBaseUrl, query],
+    [query],
   );
 
   useEffect(() => {
-    const stored = readStoredAdminApiKey();
-    const fallback = env.NEXT_PUBLIC_ADMIN_API_KEY ?? '';
-    setAdminApiKey(stored || fallback);
-  }, [env.NEXT_PUBLIC_ADMIN_API_KEY]);
-
-  useEffect(() => {
-    if (!adminApiKey) {
-      setLoading(false);
-      return;
-    }
     void loadLeads();
-  }, [adminApiKey, loadLeads]);
+  }, [loadLeads]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
@@ -75,27 +51,10 @@ export default function DiscoveryLeadsPage() {
       {/* Live updates control disabled for now. */}
 
       <div className="toolbar" style={{ marginTop: 10 }}>
-        <label>
-          Admin API Key
-          <input
-            value={adminApiKey}
-            onChange={(event) => setAdminApiKey(event.target.value)}
-            placeholder="x-admin-key"
-          />
-        </label>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            writeStoredAdminApiKey(adminApiKey.trim());
-          }}
-        >
-          Save Key
-        </button>
         <button
           type="button"
           onClick={() => void loadLeads()}
-          disabled={!adminApiKey || loading}
+          disabled={loading}
         >
           Refresh
         </button>
