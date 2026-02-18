@@ -191,6 +191,7 @@ export class PdlEnrichmentAdapter {
       employeeCount: normalizeNumber(primaryExperience?.company_size),
       country: normalizeString(value.location_country),
       city: normalizeString(value.location_locality),
+      phone: normalizeString(value.mobile_phone),
       linkedinUrl: normalizeString(value.linkedin_url),
       website:
         normalizeString(primaryExperience?.company_website) ??

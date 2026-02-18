@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { type LoginRequest } from '@lead-flood/contracts';
 
 import { buildServer, type BuildServerOptions } from './server.js';
+import { signJwt } from './auth/jwt.js';
 import type { ApiEnv } from './env.js';
 
 const env: ApiEnv = {
@@ -26,6 +27,7 @@ const env: ApiEnv = {
 const makeDefaultOptions = (): BuildServerOptions => ({
   env,
   logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
+  accessTokenSecret: env.JWT_ACCESS_SECRET,
   checkDatabaseHealth: async () => true,
   authenticateUser: async ({ email }: LoginRequest) => ({
     tokenType: 'Bearer',
@@ -44,6 +46,14 @@ const makeDefaultOptions = (): BuildServerOptions => ({
   listLeads: async () => ({ items: [], page: 1, pageSize: 20, total: 0 }),
   getJobById: async () => null,
 });
+
+function authHeaders(): Record<string, string> {
+  const token = signJwt(
+    { sub: 'user_1', sid: 'sess_1', type: 'access', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+    env.JWT_ACCESS_SECRET,
+  );
+  return { authorization: `Bearer ${token}` };
+}
 
 describe('buildServer', () => {
   const servers: Array<ReturnType<typeof buildServer>> = [];
@@ -153,6 +163,7 @@ describe('buildServer', () => {
     const response = await server.inject({
       method: 'POST',
       url: '/v1/leads',
+      headers: authHeaders(),
       payload: {
         firstName: 'Ada',
         lastName: 'Lovelace',
@@ -161,7 +172,7 @@ describe('buildServer', () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(201);
     expect(response.json()).toEqual({
       leadId: 'lead_1',
       jobId: 'job_1',
@@ -175,6 +186,7 @@ describe('buildServer', () => {
     const response = await server.inject({
       method: 'POST',
       url: '/v1/leads',
+      headers: authHeaders(),
       payload: {
         firstName: 'Ada',
       },
@@ -192,6 +204,7 @@ describe('buildServer', () => {
     const response = await server.inject({
       method: 'GET',
       url: '/v1/leads/lead_1',
+      headers: authHeaders(),
     });
     const body = response.json() as { error: string };
 
@@ -206,6 +219,7 @@ describe('buildServer', () => {
     const response = await server.inject({
       method: 'GET',
       url: '/v1/leads?page=1&pageSize=20',
+      headers: authHeaders(),
     });
 
     expect(response.statusCode).toBe(200);
@@ -225,6 +239,7 @@ describe('buildServer', () => {
         firstName: 'Ada',
         lastName: 'Lovelace',
         email: 'ada@example.com',
+        phone: null,
         source: 'manual',
         status: 'enriched',
         enrichmentData: { company: 'Analytical Engines' },
@@ -238,6 +253,7 @@ describe('buildServer', () => {
     const response = await server.inject({
       method: 'GET',
       url: '/v1/leads/lead_1',
+      headers: authHeaders(),
     });
 
     expect(response.statusCode).toBe(200);
@@ -254,6 +270,7 @@ describe('buildServer', () => {
     const response = await server.inject({
       method: 'GET',
       url: '/v1/jobs/job_1',
+      headers: authHeaders(),
     });
     const body = response.json() as { error: string };
 
@@ -267,7 +284,7 @@ describe('buildServer', () => {
       ...makeDefaultOptions(),
       getJobById: async () => ({
         id: 'job_1',
-        type: 'lead.enrich.stub',
+        type: 'enrichment.run',
         status: 'completed',
         attempts: 1,
         leadId: 'lead_1',
@@ -284,6 +301,7 @@ describe('buildServer', () => {
     const response = await server.inject({
       method: 'GET',
       url: '/v1/jobs/job_1',
+      headers: authHeaders(),
     });
 
     expect(response.statusCode).toBe(200);

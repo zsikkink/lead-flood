@@ -1,13 +1,71 @@
+import { randomUUID } from 'node:crypto';
+
 import type {
   CreateEnrichmentRunRequest,
   CreateEnrichmentRunResponse,
   EnrichmentRunStatusResponse,
   ListEnrichmentRecordsQuery,
   ListEnrichmentRecordsResponse,
+  PipelineRunStatus,
 } from '@lead-flood/contracts';
 import { prisma } from '@lead-flood/db';
+import type { Prisma } from '@lead-flood/db';
 
-import { EnrichmentNotImplementedError } from './enrichment.errors.js';
+import { EnrichmentNotImplementedError, EnrichmentRunNotFoundError } from './enrichment.errors.js';
+
+const ENRICHMENT_RUN_JOB_TYPE = 'enrichment.run';
+
+interface EnrichmentRunProgress {
+  totalItems: number;
+  processedItems: number;
+  failedItems: number;
+}
+
+function toInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+}
+
+function toCount(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+
+  return 0;
+}
+
+function readRunProgress(result: unknown): EnrichmentRunProgress {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return {
+      totalItems: 0,
+      processedItems: 0,
+      failedItems: 0,
+    };
+  }
+
+  const payload = result as Record<string, unknown>;
+  return {
+    totalItems: toCount(payload.totalItems),
+    processedItems: toCount(payload.processedItems),
+    failedItems: toCount(payload.failedItems),
+  };
+}
+
+function mapJobStatusToPipelineStatus(
+  status: 'queued' | 'running' | 'completed' | 'failed',
+  failedItems: number,
+): PipelineRunStatus {
+  switch (status) {
+    case 'queued':
+      return 'QUEUED';
+    case 'running':
+      return 'RUNNING';
+    case 'failed':
+      return 'FAILED';
+    case 'completed':
+    default:
+      return failedItems > 0 ? 'PARTIAL' : 'SUCCEEDED';
+  }
+}
 
 function toDayStart(value: string): Date {
   const source = new Date(value);
@@ -16,6 +74,7 @@ function toDayStart(value: string): Date {
 
 export interface EnrichmentRepository {
   createEnrichmentRun(input: CreateEnrichmentRunRequest): Promise<CreateEnrichmentRunResponse>;
+  markEnrichmentRunFailed(runId: string, errorMessage: string): Promise<void>;
   getEnrichmentRunStatus(runId: string): Promise<EnrichmentRunStatusResponse>;
   listEnrichmentRecords(query: ListEnrichmentRecordsQuery): Promise<ListEnrichmentRecordsResponse>;
 }
@@ -23,6 +82,10 @@ export interface EnrichmentRepository {
 export class StubEnrichmentRepository implements EnrichmentRepository {
   async createEnrichmentRun(_input: CreateEnrichmentRunRequest): Promise<CreateEnrichmentRunResponse> {
     throw new EnrichmentNotImplementedError('TODO: create enrichment run persistence');
+  }
+
+  async markEnrichmentRunFailed(_runId: string, _errorMessage: string): Promise<void> {
+    throw new EnrichmentNotImplementedError('TODO: mark enrichment run failed persistence');
   }
 
   async getEnrichmentRunStatus(_runId: string): Promise<EnrichmentRunStatusResponse> {
@@ -34,16 +97,71 @@ export class StubEnrichmentRepository implements EnrichmentRepository {
   }
 }
 
-export class PrismaEnrichmentRepository implements EnrichmentRepository {
-  async createEnrichmentRun(_input: CreateEnrichmentRunRequest): Promise<CreateEnrichmentRunResponse> {
-    throw new EnrichmentNotImplementedError('TODO: create enrichment run persistence');
+export class PrismaEnrichmentRepository extends StubEnrichmentRepository {
+  override async createEnrichmentRun(input: CreateEnrichmentRunRequest): Promise<CreateEnrichmentRunResponse> {
+    const runId = randomUUID();
+
+    await prisma.jobExecution.create({
+      data: {
+        id: runId,
+        type: ENRICHMENT_RUN_JOB_TYPE,
+        status: 'queued',
+        attempts: 0,
+        payload: toInputJson(input),
+        result: toInputJson({
+          totalItems: 0,
+          processedItems: 0,
+          failedItems: 0,
+        }),
+        error: null,
+      },
+    });
+
+    return { runId, status: 'QUEUED' };
   }
 
-  async getEnrichmentRunStatus(_runId: string): Promise<EnrichmentRunStatusResponse> {
-    throw new EnrichmentNotImplementedError('TODO: get enrichment run status persistence');
+  override async markEnrichmentRunFailed(runId: string, errorMessage: string): Promise<void> {
+    await prisma.jobExecution.update({
+      where: { id: runId },
+      data: {
+        status: 'failed',
+        error: errorMessage,
+        finishedAt: new Date(),
+      },
+    });
   }
 
-  async listEnrichmentRecords(query: ListEnrichmentRecordsQuery): Promise<ListEnrichmentRecordsResponse> {
+  override async getEnrichmentRunStatus(runId: string): Promise<EnrichmentRunStatusResponse> {
+    const run = await prisma.jobExecution.findFirst({
+      where: {
+        id: runId,
+        type: ENRICHMENT_RUN_JOB_TYPE,
+      },
+    });
+
+    if (!run) {
+      throw new EnrichmentRunNotFoundError();
+    }
+
+    const progress = readRunProgress(run.result);
+    const status = mapJobStatusToPipelineStatus(run.status, progress.failedItems);
+
+    return {
+      runId: run.id,
+      runType: 'ENRICHMENT',
+      status,
+      totalItems: progress.totalItems,
+      processedItems: progress.processedItems,
+      failedItems: progress.failedItems,
+      startedAt: run.startedAt?.toISOString() ?? null,
+      endedAt: run.finishedAt?.toISOString() ?? null,
+      errorMessage: run.error,
+      createdAt: run.createdAt.toISOString(),
+      updatedAt: run.updatedAt.toISOString(),
+    };
+  }
+
+  override async listEnrichmentRecords(query: ListEnrichmentRecordsQuery): Promise<ListEnrichmentRecordsResponse> {
     const where = {
       ...(query.leadId ? { leadId: query.leadId } : {}),
       ...(query.provider ? { provider: query.provider } : {}),

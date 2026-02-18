@@ -4,3 +4,10 @@ export class EnrichmentNotImplementedError extends Error {
     this.name = 'EnrichmentNotImplementedError';
   }
 }
+
+export class EnrichmentRunNotFoundError extends Error {
+  constructor(message = 'Enrichment run not found') {
+    super(message);
+    this.name = 'EnrichmentRunNotFoundError';
+  }
+}

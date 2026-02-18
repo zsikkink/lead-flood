@@ -3,6 +3,7 @@ import { createLogger } from '@lead-flood/observability';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ApiEnv } from '../../src/env.js';
+import { signJwt } from '../../src/auth/jwt.js';
 import { buildServer } from '../../src/server.js';
 
 const databaseUrl = process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5434/lead_flood';
@@ -26,6 +27,14 @@ const env: ApiEnv = {
   DISCOVERY_ENABLED: true,
   ENRICHMENT_ENABLED: true,
 };
+
+function authHeaders(): Record<string, string> {
+  const token = signJwt(
+    { sub: 'user_1', sid: 'sess_1', type: 'access', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+    env.JWT_ACCESS_SECRET,
+  );
+  return { authorization: `Bearer ${token}` };
+}
 
 describe('qualification rules integration', () => {
   const createdIcpIds: string[] = [];
@@ -82,6 +91,7 @@ describe('qualification rules integration', () => {
     const server = buildServer({
       env,
       logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
+      accessTokenSecret: env.JWT_ACCESS_SECRET,
       checkDatabaseHealth: async () => true,
       authenticateUser: async () => null,
       createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
@@ -93,6 +103,7 @@ describe('qualification rules integration', () => {
     const listResponse = await server.inject({
       method: 'GET',
       url: '/v1/icps?page=1&pageSize=20',
+      headers: authHeaders(),
     });
     expect(listResponse.statusCode).toBe(200);
     const listBody = listResponse.json() as {
@@ -103,12 +114,14 @@ describe('qualification rules integration', () => {
     const getResponse = await server.inject({
       method: 'GET',
       url: `/v1/icps/${icp.id}`,
+      headers: authHeaders(),
     });
     expect(getResponse.statusCode).toBe(200);
 
     const rulesResponse = await server.inject({
       method: 'GET',
       url: `/v1/icps/${icp.id}/rules`,
+      headers: authHeaders(),
     });
     expect(rulesResponse.statusCode).toBe(200);
     const rulesBody = rulesResponse.json() as {
@@ -123,6 +136,7 @@ describe('qualification rules integration', () => {
     const replaceResponse = await server.inject({
       method: 'PUT',
       url: `/v1/icps/${icp.id}/rules`,
+      headers: authHeaders(),
       payload: {
         rules: [
           {

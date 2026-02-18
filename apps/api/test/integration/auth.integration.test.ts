@@ -55,13 +55,14 @@ describe('POST /v1/auth/login integration', () => {
         firstName: 'Integration',
         lastName: 'User',
         isActive: true,
-        passwordHash: hashPassword(password),
+        passwordHash: await hashPassword(password),
       },
     });
 
     const server = buildServer({
       env,
       logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
+      accessTokenSecret: env.JWT_ACCESS_SECRET,
       checkDatabaseHealth: async () => true,
       authenticateUser: buildAuthenticateUser({
         findUserByEmail: async (email) => {

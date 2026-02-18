@@ -1,6 +1,6 @@
 import type PgBoss from 'pg-boss';
 
-import { prisma } from '@lead-flood/db';
+import { type Prisma, prisma } from '@lead-flood/db';
 
 interface OutboxPayload {
   leadId: string;
@@ -45,46 +45,38 @@ export async function dispatchPendingOutboxEvents(
 ): Promise<number> {
   const now = new Date();
   const staleProcessingCutoff = new Date(now.getTime() - STALE_PROCESSING_WINDOW_MS);
-  const events = await prisma.outboxEvent.findMany({
-    where: {
-      OR: [
-        { status: 'pending' },
-        {
-          status: 'failed',
-          nextAttemptAt: {
-            lte: now,
-          },
-        },
-        {
-          status: 'processing',
-          updatedAt: {
-            lte: staleProcessingCutoff,
-          },
-        },
-      ],
-    },
-    orderBy: { createdAt: 'asc' },
-    take: DISPATCH_BATCH_SIZE,
-  });
+
+  // Atomically claim a batch of outbox events using FOR UPDATE SKIP LOCKED
+  // to prevent TOCTOU races between concurrent dispatchers
+  const events = await prisma.$queryRaw<Array<{
+    id: string;
+    type: string;
+    status: string;
+    payload: Prisma.JsonValue;
+    attempts: number;
+    lastError: string | null;
+    nextAttemptAt: Date | null;
+    processedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }>>`
+    UPDATE "OutboxEvent"
+    SET status = 'processing', "updatedAt" = NOW()
+    WHERE id IN (
+      SELECT id FROM "OutboxEvent"
+      WHERE status = 'pending'
+         OR (status = 'failed' AND "nextAttemptAt" <= ${now})
+         OR (status = 'processing' AND "updatedAt" <= ${staleProcessingCutoff})
+      ORDER BY "createdAt" ASC
+      LIMIT ${DISPATCH_BATCH_SIZE}
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING *
+  `;
 
   let dispatchedCount = 0;
 
   for (const event of events) {
-    const claimed = await prisma.outboxEvent.updateMany({
-      where: {
-        id: event.id,
-        status: {
-          in: ['pending', 'failed', 'processing'],
-        },
-      },
-      data: {
-        status: 'processing',
-      },
-    });
-
-    if (claimed.count === 0) {
-      continue;
-    }
 
     if (TERMINAL_OUTBOX_STATUSES.has(event.status)) {
       continue;

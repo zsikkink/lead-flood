@@ -16,7 +16,14 @@ import {
 
 import { ScoringNotImplementedError } from './scoring.errors.js';
 import { PrismaScoringRepository } from './scoring.repository.js';
-import { buildScoringService } from './scoring.service.js';
+import {
+  buildScoringService,
+  type ScoringRunJobPayload,
+} from './scoring.service.js';
+
+export interface ScoringRouteDependencies {
+  enqueueScoringRun?: ((payload: ScoringRunJobPayload) => Promise<void>) | undefined;
+}
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
   reply.status(400);
@@ -40,9 +47,18 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
   return false;
 }
 
-export function registerScoringRoutes(app: FastifyInstance): void {
+export function registerScoringRoutes(
+  app: FastifyInstance,
+  dependencies?: ScoringRouteDependencies,
+): void {
   const repository = new PrismaScoringRepository();
-  const service = buildScoringService(repository);
+  const service = buildScoringService(repository, {
+    enqueueScoringRun: dependencies?.enqueueScoringRun
+      ? dependencies.enqueueScoringRun
+      : async () => {
+          throw new ScoringNotImplementedError('Scoring queue publisher is not configured');
+        },
+  });
 
   app.post('/v1/scoring/runs', async (request, reply) => {
     const parsed = CreateScoringRunRequestSchema.safeParse(request.body);

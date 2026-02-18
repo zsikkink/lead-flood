@@ -4,3 +4,10 @@ export class MessagingNotImplementedError extends Error {
     this.name = 'MessagingNotImplementedError';
   }
 }
+
+export class MessagingNotFoundError extends Error {
+  constructor(message = 'Messaging record not found') {
+    super(message);
+    this.name = 'MessagingNotFoundError';
+  }
+}

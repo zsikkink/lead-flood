@@ -17,8 +17,17 @@ import {
 } from '@lead-flood/contracts';
 
 import { MessagingNotImplementedError } from './messaging.errors.js';
-import { StubMessagingRepository } from './messaging.repository.js';
-import { buildMessagingService } from './messaging.service.js';
+import { PrismaMessagingRepository } from './messaging.repository.js';
+import {
+  buildMessagingService,
+  type MessageGenerateJobPayload,
+  type MessagingSendJobPayload,
+} from './messaging.service.js';
+
+export interface MessagingRouteDependencies {
+  enqueueMessageSend?: ((payload: MessagingSendJobPayload) => Promise<void>) | undefined;
+  enqueueMessageGenerate?: ((payload: MessageGenerateJobPayload) => Promise<void>) | undefined;
+}
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
   reply.status(400);
@@ -42,9 +51,19 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
   return false;
 }
 
-export function registerMessagingRoutes(app: FastifyInstance): void {
-  const repository = new StubMessagingRepository();
-  const service = buildMessagingService(repository);
+export function registerMessagingRoutes(
+  app: FastifyInstance,
+  dependencies?: MessagingRouteDependencies,
+): void {
+  const repository = new PrismaMessagingRepository();
+  const service = buildMessagingService(repository, {
+    enqueueMessageSend: dependencies?.enqueueMessageSend
+      ? dependencies.enqueueMessageSend
+      : async () => {
+          throw new MessagingNotImplementedError('Messaging queue publisher is not configured');
+        },
+    enqueueMessageGenerate: dependencies?.enqueueMessageGenerate,
+  });
 
   app.post('/v1/messaging/drafts/generate', async (request, reply) => {
     const parsed = GenerateMessageDraftRequestSchema.safeParse(request.body);

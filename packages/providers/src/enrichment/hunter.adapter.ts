@@ -213,6 +213,7 @@ export class HunterAdapter {
 
     return {
       email,
+      phone: normalizeString(data.phone_number),
       domain,
       companyName,
       industry: normalizeString(data.industry),

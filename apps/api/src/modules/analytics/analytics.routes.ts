@@ -13,8 +13,12 @@ import {
 } from '@lead-flood/contracts';
 
 import { AnalyticsNotImplementedError } from './analytics.errors.js';
-import { StubAnalyticsRepository } from './analytics.repository.js';
-import { buildAnalyticsService } from './analytics.service.js';
+import { PrismaAnalyticsRepository } from './analytics.repository.js';
+import { buildAnalyticsService, type AnalyticsRollupJobPayload } from './analytics.service.js';
+
+export interface AnalyticsRouteDependencies {
+  enqueueAnalyticsRollup?: ((payload: AnalyticsRollupJobPayload) => Promise<void>) | undefined;
+}
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
   reply.status(400);
@@ -38,9 +42,14 @@ function handleModuleError(error: unknown, request: FastifyRequest, reply: Fasti
   return false;
 }
 
-export function registerAnalyticsRoutes(app: FastifyInstance): void {
-  const repository = new StubAnalyticsRepository();
-  const service = buildAnalyticsService(repository);
+export function registerAnalyticsRoutes(
+  app: FastifyInstance,
+  dependencies?: AnalyticsRouteDependencies,
+): void {
+  const repository = new PrismaAnalyticsRepository();
+  const service = buildAnalyticsService(repository, {
+    enqueueAnalyticsRollup: dependencies?.enqueueAnalyticsRollup,
+  });
 
   app.get('/v1/analytics/funnel', async (request, reply) => {
     const parsedQuery = FunnelQuerySchema.safeParse(request.query);

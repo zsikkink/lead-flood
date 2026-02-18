@@ -6,8 +6,18 @@ import {
   ANALYTICS_ROLLUP_RETRY_OPTIONS,
 } from './jobs/analytics.rollup.job.js';
 import {
+  FOLLOWUP_CHECK_JOB_NAME,
+  type FollowupCheckJobPayload,
+  FOLLOWUP_CHECK_RETRY_OPTIONS,
+} from './jobs/followup.check.job.js';
+import {
   type HeartbeatJobPayload,
 } from './jobs/heartbeat.job.js';
+import {
+  DISCOVERY_SEED_JOB_NAME,
+  DISCOVERY_SEED_RETRY_OPTIONS,
+  type DiscoverySeedJobPayload,
+} from './jobs/discovery.seed.job.js';
 import {
   LABELS_GENERATE_JOB_NAME,
   type LabelsGenerateJobPayload,
@@ -35,6 +45,19 @@ export async function registerWorkerSchedules(boss: Pick<PgBoss, 'schedule'>): P
     {
       singletonKey: 'system.heartbeat',
       ...HEARTBEAT_RETRY_OPTIONS,
+    },
+  );
+
+  await boss.schedule(
+    DISCOVERY_SEED_JOB_NAME,
+    '0 4 * * 1',
+    {
+      reason: 'scheduled',
+      correlationId: 'scheduler:discovery.seed',
+    } satisfies DiscoverySeedJobPayload,
+    {
+      singletonKey: 'schedule:discovery.seed',
+      ...DISCOVERY_SEED_RETRY_OPTIONS,
     },
   );
 
@@ -97,6 +120,19 @@ export async function registerWorkerSchedules(boss: Pick<PgBoss, 'schedule'>): P
     {
       singletonKey: 'schedule:analytics.rollup',
       ...ANALYTICS_ROLLUP_RETRY_OPTIONS,
+    },
+  );
+
+  await boss.schedule(
+    FOLLOWUP_CHECK_JOB_NAME,
+    '0 5-14 * * *',
+    {
+      runId: 'scheduled:followup.check',
+      correlationId: 'scheduler:followup.check',
+    } satisfies FollowupCheckJobPayload,
+    {
+      singletonKey: 'schedule:followup.check',
+      ...FOLLOWUP_CHECK_RETRY_OPTIONS,
     },
   );
 }

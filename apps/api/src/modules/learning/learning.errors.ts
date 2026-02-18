@@ -4,3 +4,10 @@ export class LearningNotImplementedError extends Error {
     this.name = 'LearningNotImplementedError';
   }
 }
+
+export class LearningNotFoundError extends Error {
+  constructor(message = 'Learning resource not found') {
+    super(message);
+    this.name = 'LearningNotFoundError';
+  }
+}

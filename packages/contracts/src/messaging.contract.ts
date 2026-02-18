@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const MessageChannelSchema = z.enum(['EMAIL']);
+export const MessageChannelSchema = z.enum(['EMAIL', 'WHATSAPP']);
 
 export const MessageApprovalStatusSchema = z.enum([
   'PENDING',
@@ -18,7 +18,7 @@ export const MessageSendStatusSchema = z.enum([
   'FAILED',
 ]);
 
-export const SendProviderSchema = z.enum(['RESEND']);
+export const SendProviderSchema = z.enum(['RESEND', 'TRENGO']);
 
 export const MessageDraftIdParamsSchema = z
   .object({

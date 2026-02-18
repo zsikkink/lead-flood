@@ -1,0 +1,414 @@
+.discovery-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 0% 0%, #f5f2ff 0%, transparent 42%),
+    radial-gradient(circle at 100% 0%, #e9f9ff 0%, transparent 36%),
+    #f6f8fb;
+  color: #0f172a;
+  font-family:
+    'IBM Plex Sans',
+    'Segoe UI',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  padding: 24px;
+}
+
+.discovery-header {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #d9e1ec;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.discovery-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.discovery-kicker {
+  color: #4f46e5;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.discovery-title {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.discovery-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.discovery-nav a {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  color: #312e81;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.discovery-content {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #d9e1ec;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  padding: 14px;
+}
+
+.card h2,
+.card h3 {
+  margin: 0 0 8px;
+}
+
+.section-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: space-between;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.toolbar {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.toolbar label,
+.filters label,
+.form-grid label {
+  color: #334155;
+  display: grid;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea,
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font: inherit;
+  line-height: 1.25;
+  padding: 9px 10px;
+}
+
+input,
+select,
+textarea {
+  background: #fff;
+}
+
+button {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button.secondary {
+  background: #fff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.filters {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.checkbox-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.checkbox-row label {
+  align-items: center;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 6px;
+  margin-right: 8px;
+}
+
+.table-wrap {
+  border: 1px solid #d9e1ec;
+  border-radius: 12px;
+  overflow: auto;
+}
+
+table {
+  border-collapse: collapse;
+  min-width: 920px;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+tbody tr:hover {
+  background: #f8fafc;
+}
+
+.row-link {
+  color: #0f172a;
+  cursor: pointer;
+  display: block;
+  text-decoration: none;
+}
+
+.tier {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.tier.low {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+.tier.medium {
+  background: #fef3c7;
+  color: #78350f;
+}
+
+.tier.high {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.pagination {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.kpis {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.kpi {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.kpi strong {
+  display: block;
+  font-size: 20px;
+  margin-top: 4px;
+}
+
+.mono {
+  font-family:
+    'IBM Plex Mono',
+    'SFMono-Regular',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 12px;
+}
+
+.json {
+  background: #0f172a;
+  border-radius: 10px;
+  color: #e2e8f0;
+  font-size: 12px;
+  margin-top: 8px;
+  max-height: 300px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.split {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.timeline {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.jobs-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.form-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.live-control {
+  align-items: flex-end;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.live-inline {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.live-toggle {
+  align-items: center;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.live-control label {
+  color: #334155;
+  display: grid;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.live-control input[type='checkbox'] {
+  accent-color: #1d4ed8;
+}
+
+.live-meta {
+  font-size: 12px;
+}
+
+.status-pill {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+
+.status-running {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.status-success {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.status-failed {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+.status-canceled {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.status-pending {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.status-done {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.status-skipped {
+  background: #fef3c7;
+  color: #78350f;
+}
+
+@media (max-width: 920px) {
+  .discovery-shell {
+    padding: 12px;
+  }
+
+  .split,
+  .jobs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .table-wrap {
+    border: 0;
+  }
+}

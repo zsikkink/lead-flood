@@ -77,6 +77,7 @@ pnpm dev
 ## Local URLs
 
 - Web: `http://localhost:3000`
+- Discovery console: `http://localhost:3000/discovery`
 - API health: `http://localhost:5050/health`
 - API ready: `http://localhost:5050/ready`
 - Mailhog UI: `http://localhost:8025`
@@ -96,6 +97,7 @@ pnpm build
 
 - `pnpm doctor` validates Node/pnpm/Docker prerequisites
 - `pnpm bootstrap` runs preflight, installs deps, creates env files, starts infra, migrates, and seeds
+- `pnpm discovery:seed` seeds SerpAPI discovery frontier tasks (`search_tasks`)
 - `pnpm learning:backfill-features -- --icpProfileId <id> --batchSize 200`
 - `pnpm learning:backfill-features -- --dry-run`
 
@@ -106,6 +108,9 @@ pnpm build
 - Engineering guide: `docs/ENGINEERING_PLAN_BUILD_GUIDE.md`
 - Deployment: `docs/DEPLOYMENT.md`
 - Troubleshooting: `docs/TROUBLESHOOTING.md`
+- Discovery providers: `docs/DISCOVERY_PROVIDER_STACK.md`
+- SerpAPI discovery: `docs/SERPAPI_DISCOVERY.md`
+- Discovery UI sprint report: `docs/SPRINT_REPORT_DISCOVERY_UI.md`
 
 ## Package Manager Policy
 

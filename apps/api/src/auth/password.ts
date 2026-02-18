@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from 'node:crypto';
 
 const HASH_ALGORITHM = 'scrypt';
 const HASH_N = 16384;
@@ -14,9 +14,26 @@ function parsePositiveInt(value: string): number | null {
   return parsed;
 }
 
-export function hashPassword(password: string): string {
+function scryptAsync(
+  password: string,
+  salt: string,
+  keylen: number,
+  options: ScryptOptions,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(password, salt, keylen, options, (err, derivedKey) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(derivedKey);
+      }
+    });
+  });
+}
+
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString('base64url');
-  const derived = scryptSync(password, salt, HASH_KEYLEN, {
+  const derived = await scryptAsync(password, salt, HASH_KEYLEN, {
     N: HASH_N,
     r: HASH_R,
     p: HASH_P,
@@ -32,7 +49,7 @@ export function hashPassword(password: string): string {
   ].join('$');
 }
 
-export function verifyPassword(password: string, passwordHash: string): boolean {
+export async function verifyPassword(password: string, passwordHash: string): Promise<boolean> {
   const parts = passwordHash.split('$');
   if (parts.length !== 6) {
     return false;
@@ -68,7 +85,7 @@ export function verifyPassword(password: string, passwordHash: string): boolean 
     return false;
   }
 
-  const actual = scryptSync(password, salt, expected.length, {
+  const actual = await scryptAsync(password, salt, expected.length, {
     N: n,
     r,
     p,

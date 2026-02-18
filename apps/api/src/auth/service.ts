@@ -30,7 +30,7 @@ export function buildAuthenticateUser(deps: AuthenticateUserDependencies) {
       return null;
     }
 
-    if (!verifyPassword(input.password, user.passwordHash)) {
+    if (!(await verifyPassword(input.password, user.passwordHash))) {
       return null;
     }
 

@@ -12,6 +12,19 @@ import type {
 
 import type { AnalyticsRepository } from './analytics.repository.js';
 
+export interface AnalyticsRollupJobPayload {
+  runId: string;
+  day: string;
+  icpProfileId?: string | undefined;
+  fullRecompute?: boolean | undefined;
+  requestedByUserId?: string | undefined;
+  correlationId?: string | undefined;
+}
+
+export interface AnalyticsServiceDependencies {
+  enqueueAnalyticsRollup?: ((payload: AnalyticsRollupJobPayload) => Promise<void>) | undefined;
+}
+
 export interface AnalyticsService {
   getFunnel(query: FunnelQuery): Promise<FunnelResponse>;
   getScoreDistribution(query: ScoreDistributionQuery): Promise<ScoreDistributionResponse>;
@@ -20,26 +33,35 @@ export interface AnalyticsService {
   recomputeRollup(input: RecomputeRollupRequest): Promise<void>;
 }
 
-export function buildAnalyticsService(repository: AnalyticsRepository): AnalyticsService {
+export function buildAnalyticsService(
+  repository: AnalyticsRepository,
+  dependencies?: AnalyticsServiceDependencies,
+): AnalyticsService {
   return {
     async getFunnel(query) {
-      // TODO: merge live counters with daily rollups.
       return repository.getFunnel(query);
     },
     async getScoreDistribution(query) {
-      // TODO: support distribution bucketing config.
       return repository.getScoreDistribution(query);
     },
     async getModelMetrics(query) {
-      // TODO: include model version metadata in metrics.
       return repository.getModelMetrics(query);
     },
     async getRetrainStatus(query) {
-      // TODO: include scheduler and backlog status.
       return repository.getRetrainStatus(query);
     },
     async recomputeRollup(input) {
-      // TODO: enqueue analytics rollup recompute job.
+      if (dependencies?.enqueueAnalyticsRollup) {
+        const runId = `rollup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await dependencies.enqueueAnalyticsRollup({
+          runId,
+          day: input.day,
+          icpProfileId: input.icpProfileId,
+          fullRecompute: input.fullRecompute,
+          requestedByUserId: input.requestedByUserId ?? undefined,
+        });
+        return;
+      }
       await repository.recomputeRollup(input);
     },
   };

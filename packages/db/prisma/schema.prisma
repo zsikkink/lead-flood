@@ -13,6 +13,9 @@ enum LeadStatus {
   processing
   enriched
   failed
+  messaged
+  replied
+  cold
 }
 
 enum JobStatus {
@@ -52,6 +55,8 @@ enum QualificationOperator {
 }
 
 enum DiscoveryProvider {
+  BRAVE_SEARCH
+  GOOGLE_PLACES
   GOOGLE_SEARCH
   LINKEDIN_SCRAPE
   COMPANY_SEARCH_FREE
@@ -113,6 +118,89 @@ enum ScoreBand {
   HIGH
 }
 
+enum MessageChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum MessageApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  AUTO_APPROVED
+}
+
+enum MessageSendStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  REPLIED
+  BOUNCED
+  FAILED
+}
+
+enum SendProvider {
+  RESEND
+  TRENGO
+}
+
+enum FeedbackEventType {
+  REPLIED
+  MEETING_BOOKED
+  DEAL_WON
+  DEAL_LOST
+  UNSUBSCRIBED
+  BOUNCED
+}
+
+enum FeedbackSource {
+  WEBHOOK
+  MANUAL
+  CRM_IMPORT
+}
+
+enum LabelSource {
+  FEEDBACK_EVENT
+  COLD_LEAD_TIMEOUT
+  MANUAL
+}
+
+enum ReplyClassification {
+  INTERESTED
+  NOT_INTERESTED
+  OUT_OF_OFFICE
+  UNSUBSCRIBE
+}
+
+enum SearchTaskType {
+  SERP_GOOGLE
+  SERP_GOOGLE_LOCAL
+  SERP_MAPS_LOCAL
+}
+
+enum SearchTaskStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+enum DiscoverySourceType {
+  DIRECTORY
+  SMB_SITE
+  SOCIAL
+  MARKETPLACE
+  UNKNOWN
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELED
+}
+
 model User {
   id          String    @id @default(cuid())
   email       String    @unique
@@ -146,6 +234,7 @@ model Lead {
   firstName      String
   lastName       String
   email          String        @unique
+  phone          String?
   source         String
   status         LeadStatus    @default(new)
   enrichmentData Json?
@@ -157,9 +246,14 @@ model Lead {
   enrichmentRecords LeadEnrichmentRecord[]
   featureSnapshots LeadFeatureSnapshot[]
   scorePredictions LeadScorePrediction[]
+  messageDrafts    MessageDraft[]
+  messageSends     MessageSend[]
+  feedbackEvents   FeedbackEvent[]
+  trainingLabels   TrainingLabel[]
 
   @@index([status])
   @@index([source])
+  @@index([phone])
 }
 
 model JobExecution {
@@ -210,6 +304,7 @@ model IcpProfile {
   maxCompanySize       Int?
   requiredTechnologies String[]             @default([])
   excludedDomains      String[]             @default([])
+  featureList          Json?
   isActive             Boolean              @default(true)
   createdByUserId      String?
   createdByUser        User?                @relation("IcpCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -218,6 +313,7 @@ model IcpProfile {
   featureSnapshots     LeadFeatureSnapshot[]
   scorePredictions     LeadScorePrediction[]
   analyticsDailyRollups AnalyticsDailyRollup[]
+  messageDrafts        MessageDraft[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
@@ -253,11 +349,14 @@ model LeadDiscoveryRecord {
   icpProfileId     String
   icpProfile       IcpProfile          @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
   provider         DiscoveryProvider
+  providerSource   String?
+  providerConfidence Float?
   providerRecordId String
   providerCursor   String?
   queryHash        String
   status           DiscoveryRecordStatus @default(DISCOVERED)
   rawPayload       Json
+  provenanceJson   Json?
   errorMessage     String?
   discoveredAt     DateTime            @default(now())
   createdAt        DateTime            @default(now())
@@ -267,6 +366,7 @@ model LeadDiscoveryRecord {
   @@unique([leadId, icpProfileId, provider, providerRecordId])
   @@index([leadId, discoveredAt])
   @@index([icpProfileId, discoveredAt])
+  @@index([provider, providerSource])
   @@index([provider, status])
 }
 
@@ -412,6 +512,8 @@ model LeadScorePrediction {
   predictedAt       DateTime           @default(now())
   createdAt         DateTime           @default(now())
 
+  messageDrafts     MessageDraft[]
+
   @@unique([leadId, icpProfileId, featureSnapshotId, modelVersionId])
   @@index([leadId, predictedAt])
   @@index([icpProfileId, predictedAt])
@@ -436,4 +538,240 @@ model AnalyticsDailyRollup {
   @@unique([day, icpProfileId])
   @@index([day])
   @@index([icpProfileId, day])
+}
+
+model MessageDraft {
+  id                   String                @id @default(cuid())
+  leadId               String
+  lead                 Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  icpProfileId         String
+  icpProfile           IcpProfile            @relation(fields: [icpProfileId], references: [id], onDelete: Cascade)
+  scorePredictionId    String?
+  scorePrediction      LeadScorePrediction?  @relation(fields: [scorePredictionId], references: [id], onDelete: SetNull)
+  promptVersion        String
+  generatedByModel     String
+  groundingKnowledgeIds String[]             @default([])
+  groundingContextJson Json?
+  approvalStatus       MessageApprovalStatus @default(PENDING)
+  approvedByUserId     String?
+  approvedAt           DateTime?
+  rejectedReason       String?
+  followUpNumber       Int                   @default(0)
+  pitchedFeature       String?
+  parentMessageSendId  String?
+  variants             MessageVariant[]
+  messageSends         MessageSend[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([leadId, createdAt])
+  @@index([icpProfileId, createdAt])
+  @@index([approvalStatus])
+}
+
+model MessageVariant {
+  id             String         @id @default(cuid())
+  messageDraftId String
+  messageDraft   MessageDraft   @relation(fields: [messageDraftId], references: [id], onDelete: Cascade)
+  variantKey     String
+  channel        MessageChannel @default(EMAIL)
+  subject        String?
+  bodyText       String
+  bodyHtml       String?
+  ctaText        String?
+  qualityScore   Float?
+  isSelected     Boolean        @default(false)
+  messageSends   MessageSend[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([messageDraftId])
+}
+
+model MessageSend {
+  id                      String            @id @default(cuid())
+  leadId                  String
+  lead                    Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messageDraftId          String
+  messageDraft            MessageDraft      @relation(fields: [messageDraftId], references: [id], onDelete: Cascade)
+  messageVariantId        String
+  messageVariant          MessageVariant    @relation(fields: [messageVariantId], references: [id], onDelete: Cascade)
+  channel                 MessageChannel    @default(EMAIL)
+  provider                SendProvider      @default(RESEND)
+  providerMessageId       String?
+  providerConversationId  String?
+  status                  MessageSendStatus @default(QUEUED)
+  idempotencyKey          String            @unique
+  scheduledAt             DateTime?
+  sentAt                  DateTime?
+  deliveredAt             DateTime?
+  repliedAt               DateTime?
+  followUpNumber          Int               @default(0)
+  nextFollowUpAfter       DateTime?
+  failureCode             String?
+  failureReason           String?
+  feedbackEvents          FeedbackEvent[]
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  @@index([leadId, createdAt])
+  @@index([status])
+  @@index([messageDraftId])
+  @@index([providerConversationId])
+  @@index([status, followUpNumber, nextFollowUpAfter])
+}
+
+model FeedbackEvent {
+  id              String            @id @default(cuid())
+  leadId          String
+  lead            Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messageSendId   String?
+  messageSend     MessageSend?      @relation(fields: [messageSendId], references: [id], onDelete: SetNull)
+  eventType       FeedbackEventType
+  source          FeedbackSource
+  providerEventId String?
+  dedupeKey       String            @unique
+  payloadJson     Json?
+  replyText           String?
+  replyClassification ReplyClassification?
+  occurredAt      DateTime
+  createdAt       DateTime          @default(now())
+
+  trainingLabels  TrainingLabel[]
+
+  @@index([leadId, occurredAt])
+  @@index([messageSendId])
+  @@index([eventType])
+  @@index([leadId, eventType])
+}
+
+model TrainingLabel {
+  id              String         @id @default(cuid())
+  leadId          String
+  lead            Lead           @relation(fields: [leadId], references: [id])
+  feedbackEventId String?
+  feedbackEvent   FeedbackEvent? @relation(fields: [feedbackEventId], references: [id])
+  label           Int
+  source          LabelSource
+  createdAt       DateTime       @default(now())
+
+  @@unique([leadId, feedbackEventId])
+  @@index([createdAt])
+  @@index([label])
+}
+
+model SearchTask {
+  id                 String           @id @default(uuid())
+  taskType           SearchTaskType   @map("task_type")
+  countryCode        String           @map("country_code")
+  city               String?
+  language           String
+  queryText          String           @map("query_text")
+  normalizedQueryKey String           @map("normalized_query_key")
+  queryHash          String           @map("query_hash")
+  paramsJson         Json             @map("params_json")
+  page               Int
+  timeBucket         String           @map("time_bucket")
+  status             SearchTaskStatus @default(PENDING)
+  attempts           Int              @default(0)
+  runAfter           DateTime         @default(now()) @map("run_after")
+  lastResultHash     String?          @map("last_result_hash")
+  error              String?
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  discoveredSources  Source[]
+  businessEvidence   BusinessEvidence[]
+
+  @@unique([taskType, queryHash])
+  @@index([status, runAfter])
+  @@index([countryCode, language, timeBucket])
+  @@map("search_tasks")
+}
+
+model Source {
+  id                   String      @id @default(uuid())
+  type                 DiscoverySourceType
+  rootDomain           String      @map("root_domain")
+  url                  String      @unique
+  countryHint          String?     @map("country_hint")
+  discoveredFromTaskId String?     @map("discovered_from_task_id")
+  discoveredFromTask   SearchTask? @relation(fields: [discoveredFromTaskId], references: [id], onDelete: SetNull)
+  score                Float       @default(0)
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  @@index([rootDomain])
+  @@index([countryHint])
+  @@map("sources")
+}
+
+model Business {
+  id              String              @id @default(uuid())
+  name            String
+  countryCode     String              @map("country_code")
+  city            String?
+  address         String?
+  phoneE164       String?             @map("phone_e164")
+  websiteDomain   String?             @map("website_domain")
+  instagramHandle String?             @map("instagram_handle")
+  category        String?
+  rating          Float?
+  reviewCount     Int?                @map("review_count")
+  deterministicScore Float            @default(0) @map("deterministic_score")
+  scoreBand       ScoreBand?          @map("score_band")
+  hasWhatsapp     Boolean             @default(false) @map("has_whatsapp")
+  hasInstagram    Boolean             @default(false) @map("has_instagram")
+  acceptsOnlinePayments Boolean       @default(false) @map("accepts_online_payments")
+  followerCount   Int?                @map("follower_count")
+  physicalAddressPresent Boolean      @default(false) @map("physical_address_present")
+  recentActivity  Boolean             @default(false) @map("recent_activity")
+  lat             Float?
+  lng             Float?
+  confidence      Float               @default(0.5)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  evidence        BusinessEvidence[]
+
+  @@index([countryCode, city])
+  @@index([websiteDomain])
+  @@index([phoneE164])
+  @@map("businesses")
+}
+
+model BusinessEvidence {
+  id             String   @id @default(uuid())
+  businessId     String   @map("business_id")
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  searchTaskId   String?  @map("search_task_id")
+  searchTask     SearchTask? @relation(fields: [searchTaskId], references: [id], onDelete: SetNull)
+  sourceUrl      String   @map("source_url")
+  sourceType     String   @map("source_type")
+  serpapiResultId String? @map("serpapi_result_id")
+  rawJson        Json     @map("raw_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([businessId])
+  @@index([searchTaskId])
+  @@map("business_evidence")
+}
+
+model JobRun {
+  id          String       @id @default(uuid())
+  jobName     String       @map("job_name")
+  startedAt   DateTime     @default(now()) @map("started_at")
+  finishedAt  DateTime?    @map("finished_at")
+  durationMs  Int?         @map("duration_ms")
+  status      JobRunStatus
+  paramsJson  Json         @map("params_json")
+  countersJson Json?       @map("counters_json")
+  resourceJson Json?       @map("resource_json")
+  errorText   String?      @map("error_text")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([jobName, startedAt])
+  @@index([status, startedAt])
+  @@map("job_runs")
 }

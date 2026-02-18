@@ -12,6 +12,19 @@ import type {
 
 import type { ScoringRepository } from './scoring.repository.js';
 
+export interface ScoringRunJobPayload {
+  runId: string;
+  mode?: string | undefined;
+  icpProfileId?: string | undefined;
+  leadIds?: string[] | undefined;
+  modelVersionId?: string | undefined;
+  requestedByUserId?: string | undefined;
+}
+
+export interface ScoringServiceDependencies {
+  enqueueScoringRun: (payload: ScoringRunJobPayload) => Promise<void>;
+}
+
 export interface ScoringService {
   createScoringRun(input: CreateScoringRunRequest): Promise<CreateScoringRunResponse>;
   getScoringRunStatus(runId: string): Promise<ScoringRunStatusResponse>;
@@ -27,22 +40,41 @@ export interface ScoringService {
   ): Promise<LatestLeadDeterministicScoreResponse>;
 }
 
-export function buildScoringService(repository: ScoringRepository): ScoringService {
+export function buildScoringService(
+  repository: ScoringRepository,
+  dependencies: ScoringServiceDependencies,
+): ScoringService {
   return {
     async createScoringRun(input) {
-      // TODO: validate active model availability before enqueueing.
-      return repository.createScoringRun(input);
+      const result = await repository.createScoringRun(input);
+
+      const payload: ScoringRunJobPayload = {
+        runId: result.runId,
+        mode: input.mode,
+        icpProfileId: input.icpProfileId,
+        leadIds: input.leadIds,
+        modelVersionId: input.modelVersionId,
+        requestedByUserId: input.requestedByUserId,
+      };
+
+      try {
+        await dependencies.enqueueScoringRun(payload);
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to enqueue scoring.compute job';
+        await repository.markScoringRunFailed(result.runId, errorMessage);
+        throw error;
+      }
+
+      return result;
     },
     async getScoringRunStatus(runId) {
-      // TODO: include model version metadata.
       return repository.getScoringRunStatus(runId);
     },
     async listScorePredictions(query) {
-      // TODO: add default sorting by predictedAt desc.
       return repository.listScorePredictions(query);
     },
     async getLatestLeadScore(leadId, query) {
-      // TODO: support fallback to deterministic score.
       return repository.getLatestLeadScore(leadId, query);
     },
     async getLatestLeadFeatureSnapshot(leadId, query) {

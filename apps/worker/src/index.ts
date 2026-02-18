@@ -1,15 +1,27 @@
 import PgBoss, { type Job } from 'pg-boss';
 
+import { prisma } from '@lead-flood/db';
+import {
+  loadDiscoveryRuntimeConfig,
+  SerpApiDiscoveryProvider,
+  type DiscoveryRuntimeConfig,
+} from '@lead-flood/discovery';
+import type { DiscoveryProvider } from '@lead-flood/contracts';
 import { createLogger } from '@lead-flood/observability';
 import {
   ApolloDiscoveryAdapter,
+  BraveSearchAdapter,
   CompanySearchAdapter,
-  GoogleSearchAdapter,
-  LinkedInScrapeAdapter,
   ClearbitAdapter,
-  HunterAdapter,
+  GooglePlacesAdapter,
+  GoogleSearchAdapter,
+  HunterEnrichmentAdapter,
+  LinkedInScrapeAdapter,
   PdlEnrichmentAdapter,
   PublicWebLookupAdapter,
+  OpenAiAdapter,
+  ResendAdapter,
+  TrengoAdapter,
 } from '@lead-flood/providers';
 
 import { loadWorkerEnv } from './env.js';
@@ -24,6 +36,18 @@ import {
   type DiscoveryRunJobPayload,
 } from './jobs/discovery.run.job.js';
 import {
+  DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
+  DISCOVERY_RUN_SEARCH_TASK_RETRY_OPTIONS,
+  handleDiscoveryRunSearchTaskJob,
+  type DiscoveryRunSearchTaskJobPayload,
+} from './jobs/discovery.run_search_task.job.js';
+import {
+  DISCOVERY_SEED_JOB_NAME,
+  DISCOVERY_SEED_RETRY_OPTIONS,
+  handleDiscoverySeedJob,
+  type DiscoverySeedJobPayload,
+} from './jobs/discovery.seed.job.js';
+import {
   ENRICHMENT_RUN_JOB_NAME,
   handleEnrichmentRunJob,
   type EnrichmentRunJobPayload,
@@ -33,13 +57,17 @@ import {
   handleFeaturesComputeJob,
   type FeaturesComputeJobPayload,
 } from './jobs/features.compute.job.js';
+import {
+  FOLLOWUP_CHECK_JOB_NAME,
+  handleFollowupCheckJob,
+  type FollowupCheckJobPayload,
+} from './jobs/followup.check.job.js';
 import { handleHeartbeatJob, type HeartbeatJobPayload } from './jobs/heartbeat.job.js';
 import {
   LABELS_GENERATE_JOB_NAME,
   handleLabelsGenerateJob,
   type LabelsGenerateJobPayload,
 } from './jobs/labels.generate.job.js';
-import { handleLeadEnrichJob, type LeadEnrichJobPayload } from './jobs/lead-enrich.job.js';
 import {
   MESSAGE_GENERATE_JOB_NAME,
   handleMessageGenerateJob,
@@ -61,12 +89,24 @@ import {
   type ModelTrainJobPayload,
 } from './jobs/model.train.job.js';
 import {
+  NOTIFY_SALES_JOB_NAME,
+  handleNotifySalesJob,
+  type NotifySalesJobPayload,
+  NOTIFY_SALES_RETRY_OPTIONS,
+} from './jobs/notify.sales.job.js';
+import {
+  REPLY_CLASSIFY_JOB_NAME,
+  handleReplyClassifyJob,
+  type ReplyClassifyJobPayload,
+} from './jobs/reply.classify.job.js';
+import {
   SCORING_COMPUTE_JOB_NAME,
   handleScoringComputeJob,
   type ScoringComputeJobPayload,
 } from './jobs/scoring.compute.job.js';
+import { WhatsAppRateLimiter } from './messaging/rate-limiter.js';
 import { dispatchPendingOutboxEvents } from './outbox-dispatcher.js';
-import { ensureWorkerQueues, HEARTBEAT_QUEUE_NAME, LEAD_ENRICH_STUB_QUEUE_NAME } from './queues.js';
+import { ensureWorkerQueues, HEARTBEAT_QUEUE_NAME } from './queues.js';
 import { registerWorkerSchedules } from './schedules.js';
 
 interface WorkerLogger {
@@ -77,18 +117,68 @@ interface WorkerLogger {
 
 type BossForWork = Pick<PgBoss, 'work'>;
 type JobHandler<TPayload> = (logger: WorkerLogger, job: Job<TPayload>) => Promise<void>;
+interface WorkerRegistrationOptions {
+  batchSize?: number;
+  pollingIntervalSeconds?: number;
+  concurrent?: boolean;
+}
+
+const ALL_DISCOVERY_PROVIDERS: DiscoveryProvider[] = [
+  'BRAVE_SEARCH',
+  'GOOGLE_PLACES',
+  'GOOGLE_SEARCH',
+  'LINKEDIN_SCRAPE',
+  'COMPANY_SEARCH_FREE',
+  'APOLLO',
+];
+
+function parseDiscoveryProviderOrder(raw: string | undefined): DiscoveryProvider[] {
+  if (!raw) {
+    return [];
+  }
+
+  const values = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry): entry is DiscoveryProvider =>
+      ALL_DISCOVERY_PROVIDERS.includes(entry as DiscoveryProvider),
+    );
+
+  return Array.from(new Set(values));
+}
 
 async function registerWorker<TPayload>(
   boss: BossForWork,
   logger: WorkerLogger,
   queueName: string,
   handler: JobHandler<TPayload>,
+  options?: WorkerRegistrationOptions,
 ): Promise<void> {
-  await boss.work<TPayload>(queueName, async (jobs) => {
+  const processJobs = async (jobs: Job<TPayload>[]): Promise<void> => {
+    if (options?.concurrent) {
+      await Promise.all(jobs.map(async (job) => handler(logger, job)));
+      return;
+    }
+
     for (const job of jobs) {
       await handler(logger, job);
     }
-  });
+  };
+
+  if (options?.batchSize || options?.pollingIntervalSeconds) {
+    await boss.work<TPayload>(
+      queueName,
+      {
+        ...(options.batchSize ? { batchSize: options.batchSize } : {}),
+        ...(options.pollingIntervalSeconds
+          ? { pollingIntervalSeconds: options.pollingIntervalSeconds }
+          : {}),
+      },
+      processJobs,
+    );
+  } else {
+    await boss.work<TPayload>(queueName, processJobs);
+  }
 
   logger.info({ queueName }, 'Registered worker queue');
 }
@@ -118,6 +208,20 @@ async function main(): Promise<void> {
     minRequestIntervalMs: env.APOLLO_RATE_LIMIT_MS,
   });
 
+  const braveSearchAdapter = new BraveSearchAdapter({
+    enabled: env.BRAVE_SEARCH_ENABLED,
+    apiKey: env.BRAVE_SEARCH_API_KEY,
+    baseUrl: env.BRAVE_SEARCH_BASE_URL,
+    minRequestIntervalMs: env.BRAVE_SEARCH_RATE_LIMIT_MS,
+  });
+
+  const googlePlacesAdapter = new GooglePlacesAdapter({
+    enabled: env.GOOGLE_PLACES_ENABLED,
+    apiKey: env.GOOGLE_PLACES_API_KEY,
+    baseUrl: env.GOOGLE_PLACES_BASE_URL,
+    minRequestIntervalMs: env.GOOGLE_PLACES_RATE_LIMIT_MS,
+  });
+
   const googleSearchAdapter = new GoogleSearchAdapter({
     apiKey: env.GOOGLE_SEARCH_API_KEY,
     searchEngineId: env.GOOGLE_SEARCH_ENGINE_ID,
@@ -142,7 +246,8 @@ async function main(): Promise<void> {
     minRequestIntervalMs: env.PDL_RATE_LIMIT_MS,
   });
 
-  const hunterAdapter = new HunterAdapter({
+  const hunterAdapter = new HunterEnrichmentAdapter({
+    enabled: env.HUNTER_ENABLED,
     apiKey: env.HUNTER_API_KEY,
     baseUrl: env.HUNTER_BASE_URL,
     minRequestIntervalMs: env.HUNTER_RATE_LIMIT_MS,
@@ -157,6 +262,58 @@ async function main(): Promise<void> {
   const publicWebLookupAdapter = new PublicWebLookupAdapter({
     enabled: env.OTHER_FREE_ENRICHMENT_ENABLED,
     baseUrl: env.PUBLIC_LOOKUP_BASE_URL,
+  });
+  const discoveryProviderOrder = parseDiscoveryProviderOrder(env.DISCOVERY_PROVIDER_ORDER);
+
+  let discoveryRuntimeConfig: DiscoveryRuntimeConfig | null = null;
+  let serpApiProvider: SerpApiDiscoveryProvider | null = null;
+  try {
+    discoveryRuntimeConfig = loadDiscoveryRuntimeConfig(process.env);
+    if (discoveryRuntimeConfig.mapsZoomWarning) {
+      logger.warn(
+        {
+          warning: discoveryRuntimeConfig.mapsZoomWarning,
+        },
+        'Using default discovery maps zoom',
+      );
+    }
+    serpApiProvider = new SerpApiDiscoveryProvider({
+      apiKey: discoveryRuntimeConfig.serpApiKey,
+      rps: discoveryRuntimeConfig.rps,
+      enableCache: discoveryRuntimeConfig.enableCache,
+      maxAttempts: discoveryRuntimeConfig.maxTaskAttempts,
+      backoffBaseSeconds: discoveryRuntimeConfig.backoffBaseSeconds,
+      mapsZoom: discoveryRuntimeConfig.mapsZoom,
+    });
+  } catch (error: unknown) {
+    logger.warn(
+      {
+        error: error instanceof Error ? error.message : 'invalid discovery runtime config',
+      },
+      'SerpAPI discovery runtime disabled; set SERPAPI_API_KEY and discovery env vars to enable',
+    );
+  }
+
+  const openAiAdapter = new OpenAiAdapter({
+    apiKey: env.OPENAI_API_KEY,
+    generationModel: env.OPENAI_GENERATION_MODEL,
+    scoringModel: env.OPENAI_SCORING_MODEL,
+    baseUrl: env.OPENAI_BASE_URL,
+  });
+
+  const resendAdapter = new ResendAdapter({
+    apiKey: env.RESEND_API_KEY,
+    fromEmail: env.RESEND_FROM_EMAIL,
+  });
+
+  const trengoAdapter = new TrengoAdapter({
+    apiKey: env.TRENGO_API_KEY,
+    baseUrl: env.TRENGO_BASE_URL,
+    channelId: env.TRENGO_CHANNEL_ID,
+  });
+
+  const whatsAppRateLimiter = new WhatsAppRateLimiter(prisma, {
+    dailySendLimit: env.WHATSAPP_DAILY_SEND_LIMIT,
   });
 
   let outboxDispatchRunning = false;
@@ -184,28 +341,86 @@ async function main(): Promise<void> {
   }, 5000);
 
   await registerWorker<HeartbeatJobPayload>(boss, logger, HEARTBEAT_QUEUE_NAME, handleHeartbeatJob);
-  await registerWorker<LeadEnrichJobPayload>(
-    boss,
-    logger,
-    LEAD_ENRICH_STUB_QUEUE_NAME,
-    handleLeadEnrichJob,
-  );
   await registerWorker<DiscoveryRunJobPayload>(boss, logger, DISCOVERY_RUN_JOB_NAME, (jobLogger, job) =>
     handleDiscoveryRunJob(jobLogger, job, {
       boss,
       apolloAdapter,
+      braveSearchAdapter,
+      googlePlacesAdapter,
       googleSearchAdapter,
       linkedInScrapeAdapter,
       companySearchAdapter,
       discoveryEnabled: env.DISCOVERY_ENABLED,
       apolloEnabled: env.APOLLO_ENABLED,
+      braveSearchEnabled: env.BRAVE_SEARCH_ENABLED,
+      googlePlacesEnabled: env.GOOGLE_PLACES_ENABLED,
       googleSearchEnabled: env.GOOGLE_SEARCH_ENABLED,
       linkedInScrapeEnabled: env.LINKEDIN_SCRAPE_ENABLED,
       companySearchEnabled: env.COMPANY_SEARCH_ENABLED,
       defaultProvider: env.DISCOVERY_DEFAULT_PROVIDER,
+      providerOrder: discoveryProviderOrder,
       defaultEnrichmentProvider: env.ENRICHMENT_DEFAULT_PROVIDER,
     }),
   );
+
+  if (discoveryRuntimeConfig && serpApiProvider) {
+    await registerWorker<DiscoverySeedJobPayload>(
+      boss,
+      logger,
+      DISCOVERY_SEED_JOB_NAME,
+      (jobLogger, job) =>
+        handleDiscoverySeedJob(jobLogger, job, {
+          boss,
+          config: discoveryRuntimeConfig,
+        }),
+    );
+
+    await registerWorker<DiscoveryRunSearchTaskJobPayload>(
+      boss,
+      logger,
+      DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
+      (jobLogger, job) =>
+        handleDiscoveryRunSearchTaskJob(jobLogger, job, {
+          boss,
+          provider: serpApiProvider,
+          config: discoveryRuntimeConfig,
+          ...(env.DISCOVERY_RUN_MAX_TASKS !== undefined
+            ? { maxTasks: env.DISCOVERY_RUN_MAX_TASKS }
+            : {}),
+        }),
+      {
+        batchSize: discoveryRuntimeConfig.concurrency,
+        pollingIntervalSeconds: 1,
+        concurrent: true,
+      },
+    );
+
+    for (let slot = 0; slot < discoveryRuntimeConfig.concurrency; slot += 1) {
+      await boss.send(
+        DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
+        {
+          slot,
+          reason: 'worker_bootstrap',
+          correlationId: 'bootstrap:discovery.run_search_task',
+        } satisfies DiscoveryRunSearchTaskJobPayload,
+        {
+          ...DISCOVERY_RUN_SEARCH_TASK_RETRY_OPTIONS,
+        },
+      );
+    }
+
+    await boss.send(
+      DISCOVERY_SEED_JOB_NAME,
+      {
+        reason: 'worker_bootstrap',
+        correlationId: 'bootstrap:discovery.seed',
+      } satisfies DiscoverySeedJobPayload,
+      {
+        ...DISCOVERY_SEED_RETRY_OPTIONS,
+      },
+    );
+  }
+
   await registerWorker<EnrichmentRunJobPayload>(
     boss,
     logger,
@@ -238,40 +453,94 @@ async function main(): Promise<void> {
     boss,
     logger,
     LABELS_GENERATE_JOB_NAME,
-    handleLabelsGenerateJob,
+    (jobLogger, job) => handleLabelsGenerateJob(jobLogger, job),
   );
   await registerWorker<ScoringComputeJobPayload>(
     boss,
     logger,
     SCORING_COMPUTE_JOB_NAME,
-    handleScoringComputeJob,
+    (jobLogger, job) =>
+      handleScoringComputeJob(jobLogger, job, {
+        openAiAdapter,
+        deterministicWeight: env.SCORING_DETERMINISTIC_WEIGHT,
+        aiWeight: env.SCORING_AI_WEIGHT,
+      }),
   );
-  await registerWorker<ModelTrainJobPayload>(boss, logger, MODEL_TRAIN_JOB_NAME, handleModelTrainJob);
+  await registerWorker<ModelTrainJobPayload>(
+    boss,
+    logger,
+    MODEL_TRAIN_JOB_NAME,
+    (jobLogger, job) => handleModelTrainJob(jobLogger, job, { boss }),
+  );
   await registerWorker<ModelEvaluateJobPayload>(
     boss,
     logger,
     MODEL_EVALUATE_JOB_NAME,
-    handleModelEvaluateJob,
+    (jobLogger, job) => handleModelEvaluateJob(jobLogger, job, { boss }),
   );
   await registerWorker<MessageGenerateJobPayload>(
     boss,
     logger,
     MESSAGE_GENERATE_JOB_NAME,
-    handleMessageGenerateJob,
+    (jobLogger, job) =>
+      handleMessageGenerateJob(jobLogger, job, {
+        openAiAdapter,
+        boss,
+      }),
   );
-  await registerWorker<MessageSendJobPayload>(boss, logger, MESSAGE_SEND_JOB_NAME, handleMessageSendJob);
+  await registerWorker<MessageSendJobPayload>(
+    boss,
+    logger,
+    MESSAGE_SEND_JOB_NAME,
+    (jobLogger, job) =>
+      handleMessageSendJob(jobLogger, job, {
+        resendAdapter,
+        trengoAdapter,
+        rateLimiter: whatsAppRateLimiter,
+        boss,
+      }),
+  );
   await registerWorker<AnalyticsRollupJobPayload>(
     boss,
     logger,
     ANALYTICS_ROLLUP_JOB_NAME,
     handleAnalyticsRollupJob,
   );
+  await registerWorker<FollowupCheckJobPayload>(
+    boss,
+    logger,
+    FOLLOWUP_CHECK_JOB_NAME,
+    (jobLogger, job) => handleFollowupCheckJob(jobLogger, job, { boss }),
+  );
+  await registerWorker<ReplyClassifyJobPayload>(
+    boss,
+    logger,
+    REPLY_CLASSIFY_JOB_NAME,
+    (jobLogger, job) =>
+      handleReplyClassifyJob(jobLogger, job, {
+        openAiAdapter,
+        boss,
+        notifySalesJobName: NOTIFY_SALES_JOB_NAME,
+        notifySalesRetryOptions: NOTIFY_SALES_RETRY_OPTIONS,
+      }),
+  );
+  await registerWorker<NotifySalesJobPayload>(
+    boss,
+    logger,
+    NOTIFY_SALES_JOB_NAME,
+    (jobLogger, job) =>
+      handleNotifySalesJob(jobLogger, job, {
+        slackWebhookUrl: env.SLACK_WEBHOOK_URL,
+        trengoApiKey: env.TRENGO_API_KEY,
+        trengoBaseUrl: env.TRENGO_BASE_URL,
+        trengoInternalConversationId: env.TRENGO_INTERNAL_CONVERSATION_ID,
+      }),
+  );
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutting down worker');
     clearInterval(outboxInterval);
-    await boss.stop();
-    process.exit(0);
+    await boss.stop({ graceful: true, timeout: 30_000 });
   };
 
   process.on('SIGINT', () => {

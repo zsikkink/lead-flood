@@ -3,6 +3,7 @@ import { createLogger } from '@lead-flood/observability';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ApiEnv } from '../../src/env.js';
+import { signJwt } from '../../src/auth/jwt.js';
 import { buildServer } from '../../src/server.js';
 
 const databaseUrl = process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5434/lead_flood';
@@ -30,6 +31,14 @@ const env: ApiEnv = {
 function toDayStart(value: string): Date {
   const source = new Date(value);
   return new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth(), source.getUTCDate()));
+}
+
+function authHeaders(): Record<string, string> {
+  const token = signJwt(
+    { sub: 'user_1', sid: 'sess_1', type: 'access', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+    env.JWT_ACCESS_SECRET,
+  );
+  return { authorization: `Bearer ${token}` };
 }
 
 describe('inspection endpoints integration', () => {
@@ -214,6 +223,7 @@ describe('inspection endpoints integration', () => {
     const server = buildServer({
       env,
       logger: createLogger({ service: 'api-test', env: 'test', level: 'error' }),
+      accessTokenSecret: env.JWT_ACCESS_SECRET,
       checkDatabaseHealth: async () => true,
       authenticateUser: async () => null,
       createLeadAndEnqueue: async () => ({ leadId: 'lead_1', jobId: 'job_1' }),
@@ -298,6 +308,7 @@ describe('inspection endpoints integration', () => {
     const discoveryResponse = await server.inject({
       method: 'GET',
       url: `/v1/discovery/records?icpProfileId=${icp.id}&includeQualityMetrics=true`,
+      headers: authHeaders(),
     });
     expect(discoveryResponse.statusCode).toBe(200);
     const discoveryBody = discoveryResponse.json() as {
@@ -310,6 +321,7 @@ describe('inspection endpoints integration', () => {
     const enrichmentResponse = await server.inject({
       method: 'GET',
       url: `/v1/enrichment/records?leadId=${lead.id}&includeQualityMetrics=true`,
+      headers: authHeaders(),
     });
     expect(enrichmentResponse.statusCode).toBe(200);
     const enrichmentBody = enrichmentResponse.json() as {
@@ -320,6 +332,7 @@ describe('inspection endpoints integration', () => {
     const leadsResponse = await server.inject({
       method: 'GET',
       url: `/v1/leads?icpProfileId=${icp.id}&scoreBand=HIGH&includeQualityMetrics=true`,
+      headers: authHeaders(),
     });
     expect(leadsResponse.statusCode).toBe(200);
     const leadsBody = leadsResponse.json() as { items: Array<{ id: string }> };
@@ -328,13 +341,16 @@ describe('inspection endpoints integration', () => {
     const debugResponse = await server.inject({
       method: 'GET',
       url: `/v1/icp/${icp.id}/debug-sample?limit=5`,
+      headers: authHeaders(),
     });
     expect(debugResponse.statusCode).toBe(200);
     const debugBody = debugResponse.json() as {
       providerQueries: Array<{ provider: string }>;
       samples: Array<{ discoveryRecordId: string; ruleEvaluations: Array<{ ruleId: string }> }>;
     };
-    expect(debugBody.providerQueries).toHaveLength(4);
+    expect(debugBody.providerQueries).toHaveLength(6);
+    expect(debugBody.providerQueries.map((entry) => entry.provider)).toContain('BRAVE_SEARCH');
+    expect(debugBody.providerQueries.map((entry) => entry.provider)).toContain('GOOGLE_PLACES');
     expect(debugBody.samples[0]?.discoveryRecordId).toBe(discoveryRecord.id);
     expect(debugBody.samples[0]?.ruleEvaluations[0]?.ruleId).toBe(rule.id);
 

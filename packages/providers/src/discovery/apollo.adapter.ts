@@ -211,6 +211,7 @@ export class ApolloDiscoveryAdapter {
         headers: {
           'content-type': 'application/json',
           'x-api-key': this.apiKey,
+          'user-agent': 'LeadFlood/1.0 (+https://leadflood.io)',
         },
         body: JSON.stringify(requestBody),
         signal: controller.signal,

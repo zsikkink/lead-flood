@@ -1,4 +1,5 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { z } from 'zod';
 
 export interface JwtClaims {
   sub: string;
@@ -7,6 +8,14 @@ export interface JwtClaims {
   iat: number;
   exp: number;
 }
+
+const JwtClaimsSchema = z.object({
+  sub: z.string(),
+  sid: z.string(),
+  type: z.enum(['access', 'refresh']),
+  iat: z.number(),
+  exp: z.number(),
+});
 
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -21,4 +30,35 @@ export function signJwt(claims: JwtClaims, secret: string): string {
   const signature = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
 
   return `${header}.${payload}.${signature}`;
+}
+
+export function verifyJwt(token: string, secret: string): JwtClaims | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  const [header, payload, signature] = parts as [string, string, string];
+  const expectedSignature = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
+
+  const sigBuffer = Buffer.from(signature, 'base64url');
+  const expectedBuffer = Buffer.from(expectedSignature, 'base64url');
+
+  if (sigBuffer.length !== expectedBuffer.length || !timingSafeEqual(sigBuffer, expectedBuffer)) {
+    return null;
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
+  } catch {
+    return null;
+  }
+
+  const parsed = JwtClaimsSchema.safeParse(raw);
+  if (!parsed.success) {
+    return null;
+  }
+
+  return parsed.data;
 }

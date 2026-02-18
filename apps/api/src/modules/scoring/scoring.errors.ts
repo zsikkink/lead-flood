@@ -4,3 +4,10 @@ export class ScoringNotImplementedError extends Error {
     this.name = 'ScoringNotImplementedError';
   }
 }
+
+export class ScoringRunNotFoundError extends Error {
+  constructor(message = 'Scoring run not found') {
+    super(message);
+    this.name = 'ScoringRunNotFoundError';
+  }
+}

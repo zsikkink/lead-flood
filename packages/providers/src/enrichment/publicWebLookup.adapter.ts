@@ -174,6 +174,7 @@ export class PublicWebLookupAdapter {
 
     return {
       email,
+      phone: null,
       domain,
       companyName,
       industry: null,
