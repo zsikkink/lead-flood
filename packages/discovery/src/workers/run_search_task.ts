@@ -11,33 +11,18 @@ import type {
   DiscoveryProvider,
   NormalizedLocalBusiness,
   NormalizedProviderResponse,
-  NormalizedSearchResult,
   SearchTaskType,
 } from '../providers/types.js';
 
 type SearchTaskStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'SKIPPED';
 type SourceType = 'DIRECTORY' | 'SMB_SITE' | 'SOCIAL' | 'MARKETPLACE' | 'UNKNOWN';
 
-type DiscoveryPrismaDelegates = {
-  source: {
-    findUnique: (...args: any[]) => Promise<any>;
-    update: (...args: any[]) => Promise<any>;
-    create: (...args: any[]) => Promise<any>;
-  };
-  business: {
-    findFirst: (...args: any[]) => Promise<any>;
-    update: (...args: any[]) => Promise<any>;
-    create: (...args: any[]) => Promise<any>;
-  };
-  businessEvidence: {
-    create: (...args: any[]) => Promise<any>;
-  };
-  searchTask: {
-    update: (...args: any[]) => Promise<any>;
-  };
-};
+type DiscoveryPrismaDelegates = Pick<
+  typeof prisma,
+  'source' | 'business' | 'businessEvidence' | 'searchTask'
+>;
 
-const discoveryPrisma = prisma as typeof prisma & DiscoveryPrismaDelegates;
+const discoveryPrisma: DiscoveryPrismaDelegates = prisma;
 
 interface SearchTaskRow {
   id: string;
@@ -557,33 +542,50 @@ async function upsertBusinessFromLocalResult(
         : signals.followerCount;
     const mergedScore = Math.max(existing.deterministicScore, signals.deterministicScore);
 
+    const updateData: Prisma.BusinessUpdateInput = {
+      name: local.name,
+      countryCode: task.country_code,
+      city: normalizeCity(local.city ?? task.city),
+      address: normalizeAddress(local.address),
+      instagramHandle: normalizeNullableString(local.instagramHandle),
+      category: normalizeNullableString(local.category),
+      confidence: Math.max(existing.confidence, confidence),
+      hasWhatsapp: existing.hasWhatsapp || signals.hasWhatsapp,
+      hasInstagram: existing.hasInstagram || signals.hasInstagram,
+      acceptsOnlinePayments:
+        existing.acceptsOnlinePayments || signals.acceptsOnlinePayments,
+      physicalAddressPresent:
+        existing.physicalAddressPresent || signals.physicalAddressPresent,
+      recentActivity: existing.recentActivity || signals.recentActivity,
+      deterministicScore: mergedScore,
+      scoreBand: toScoreBand(mergedScore),
+    };
+
+    if (phoneE164 !== null) {
+      updateData.phoneE164 = phoneE164;
+    }
+    if (websiteDomain !== null) {
+      updateData.websiteDomain = websiteDomain;
+    }
+    if (local.rating !== null) {
+      updateData.rating = local.rating;
+    }
+    if (local.reviewCount !== null) {
+      updateData.reviewCount = local.reviewCount;
+    }
+    if (local.latitude !== null) {
+      updateData.lat = local.latitude;
+    }
+    if (local.longitude !== null) {
+      updateData.lng = local.longitude;
+    }
+    if (mergedFollowerCount !== null && mergedFollowerCount !== undefined) {
+      updateData.followerCount = mergedFollowerCount;
+    }
+
     await discoveryPrisma.business.update({
       where: { id: existing.id },
-      data: {
-        name: local.name,
-        countryCode: task.country_code,
-        city: normalizeCity(local.city ?? task.city),
-        address: normalizeAddress(local.address),
-        phoneE164: phoneE164 ?? undefined,
-        websiteDomain: websiteDomain ?? undefined,
-        instagramHandle: normalizeNullableString(local.instagramHandle),
-        category: normalizeNullableString(local.category),
-        rating: local.rating ?? undefined,
-        reviewCount: local.reviewCount ?? undefined,
-        lat: local.latitude ?? undefined,
-        lng: local.longitude ?? undefined,
-        confidence: Math.max(existing.confidence, confidence),
-        hasWhatsapp: existing.hasWhatsapp || signals.hasWhatsapp,
-        hasInstagram: existing.hasInstagram || signals.hasInstagram,
-        acceptsOnlinePayments:
-          existing.acceptsOnlinePayments || signals.acceptsOnlinePayments,
-        followerCount: mergedFollowerCount ?? undefined,
-        physicalAddressPresent:
-          existing.physicalAddressPresent || signals.physicalAddressPresent,
-        recentActivity: existing.recentActivity || signals.recentActivity,
-        deterministicScore: mergedScore,
-        scoreBand: toScoreBand(mergedScore),
-      },
+      data: updateData,
     });
 
     return {
@@ -602,15 +604,15 @@ async function upsertBusinessFromLocalResult(
       websiteDomain,
       instagramHandle: normalizeNullableString(local.instagramHandle),
       category: normalizeNullableString(local.category),
-      rating: local.rating ?? undefined,
-      reviewCount: local.reviewCount ?? undefined,
-      lat: local.latitude ?? undefined,
-      lng: local.longitude ?? undefined,
+      rating: local.rating ?? null,
+      reviewCount: local.reviewCount ?? null,
+      lat: local.latitude ?? null,
+      lng: local.longitude ?? null,
       confidence,
       hasWhatsapp: signals.hasWhatsapp,
       hasInstagram: signals.hasInstagram,
       acceptsOnlinePayments: signals.acceptsOnlinePayments,
-      followerCount: signals.followerCount ?? undefined,
+      followerCount: signals.followerCount ?? null,
       physicalAddressPresent: signals.physicalAddressPresent,
       recentActivity: signals.recentActivity,
       deterministicScore: signals.deterministicScore,

@@ -103,7 +103,7 @@ function normalizeNumber(value: unknown): number | null {
     return value;
   }
   if (typeof value === 'string') {
-    const normalized = value.replace(/[^0-9.\-]/g, '');
+    const normalized = value.replace(/[^0-9.-]/g, '');
     if (!normalized) {
       return null;
     }
