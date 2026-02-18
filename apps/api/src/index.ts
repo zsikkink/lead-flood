@@ -5,9 +5,12 @@ import { createLogger } from '@lead-flood/observability';
 
 import { buildAuthenticateUser } from './auth/service.js';
 import { loadApiEnv } from './env.js';
+import type { ReplyClassifyJobPayload } from '@lead-flood/contracts';
+
+import type { AnalyticsRollupJobPayload } from './modules/analytics/analytics.service.js';
 import type { DiscoveryRunJobPayload } from './modules/discovery/discovery.service.js';
 import type { EnrichmentRunJobPayload } from './modules/enrichment/enrichment.service.js';
-import type { MessagingSendJobPayload } from './modules/messaging/messaging.service.js';
+import type { MessageGenerateJobPayload, MessagingSendJobPayload } from './modules/messaging/messaging.service.js';
 import type { ScoringRunJobPayload } from './modules/scoring/scoring.service.js';
 import { buildServer, LeadAlreadyExistsError } from './server.js';
 
@@ -34,6 +37,18 @@ async function main(): Promise<void> {
   await boss.createQueue('enrichment.run');
   await boss.createQueue('scoring.compute');
   await boss.createQueue('message.send');
+  await boss.createQueue('message.generate');
+  await boss.createQueue('analytics.rollup');
+  await boss.createQueue('reply.classify');
+
+  const enqueueReplyClassify = async (payload: ReplyClassifyJobPayload): Promise<void> => {
+    await boss.send('reply.classify', payload, {
+      retryLimit: 3,
+      retryDelay: 60,
+      retryBackoff: true,
+      deadLetter: 'reply.classify.dead_letter',
+    });
+  };
 
   const server = buildServer({
     env,
@@ -204,6 +219,24 @@ async function main(): Promise<void> {
         retryBackoff: true,
       });
     },
+    enqueueMessageGenerate: async (payload: MessageGenerateJobPayload) => {
+      await boss.send('message.generate', payload, {
+        singletonKey: `message.generate:${payload.runId}`,
+        retryLimit: 3,
+        retryDelay: 30,
+        retryBackoff: true,
+      });
+    },
+    enqueueAnalyticsRollup: async (payload: AnalyticsRollupJobPayload) => {
+      await boss.send('analytics.rollup', payload, {
+        singletonKey: `analytics.rollup:${payload.icpProfileId}:${payload.day}`,
+        retryLimit: 3,
+        retryDelay: 30,
+        retryBackoff: true,
+      });
+    },
+    enqueueReplyClassify,
+    trengoWebhookSecret: env.TRENGO_WEBHOOK_SECRET,
     getLeadById: async (leadId) => {
       return prisma.lead.findUnique({
         where: { id: leadId },

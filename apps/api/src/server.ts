@@ -24,6 +24,7 @@ import {
 import { buildAuthGuard } from './auth/guard.js';
 import type { ApiEnv } from './env.js';
 import { registerAnalyticsRoutes } from './modules/analytics/analytics.routes.js';
+import type { AnalyticsRollupJobPayload } from './modules/analytics/analytics.service.js';
 import { registerDiscoveryRoutes } from './modules/discovery/discovery.routes.js';
 import type { DiscoveryRunJobPayload } from './modules/discovery/discovery.service.js';
 import { registerEnrichmentRoutes } from './modules/enrichment/enrichment.routes.js';
@@ -31,10 +32,11 @@ import type { EnrichmentRunJobPayload } from './modules/enrichment/enrichment.se
 import { registerFeedbackRoutes } from './modules/feedback/feedback.routes.js';
 import { registerIcpRoutes } from './modules/icp/icp.routes.js';
 import { registerLearningRoutes } from './modules/learning/learning.routes.js';
-import { registerMessagingRoutes } from './modules/messaging/messaging.routes.js';
-import type { MessagingSendJobPayload } from './modules/messaging/messaging.service.js';
+import { registerMessagingRoutes, type MessagingRouteDependencies } from './modules/messaging/messaging.routes.js';
+import type { MessageGenerateJobPayload, MessagingSendJobPayload } from './modules/messaging/messaging.service.js';
 import { registerScoringRoutes } from './modules/scoring/scoring.routes.js';
 import type { ScoringRunJobPayload } from './modules/scoring/scoring.service.js';
+import { registerWebhookRoutes } from './modules/webhook/webhook.routes.js';
 
 export class LeadAlreadyExistsError extends Error {
   constructor(message = 'Lead already exists') {
@@ -48,6 +50,7 @@ export interface LeadRecord {
   firstName: string;
   lastName: string;
   email: string;
+  phone: string | null;
   source: string;
   status: LeadStatus;
   enrichmentData: unknown | null;
@@ -81,6 +84,10 @@ export interface BuildServerOptions {
   enqueueEnrichmentRun?: (payload: EnrichmentRunJobPayload) => Promise<void>;
   enqueueScoringRun?: (payload: ScoringRunJobPayload) => Promise<void>;
   enqueueMessageSend?: (payload: MessagingSendJobPayload) => Promise<void>;
+  enqueueMessageGenerate?: ((payload: MessageGenerateJobPayload) => Promise<void>) | undefined;
+  enqueueAnalyticsRollup?: ((payload: AnalyticsRollupJobPayload) => Promise<void>) | undefined;
+  enqueueReplyClassify?: ((payload: import('@lead-flood/contracts').ReplyClassifyJobPayload) => Promise<void>) | undefined;
+  trengoWebhookSecret?: string | undefined;
   getLeadById: (leadId: string) => Promise<LeadRecord | null>;
   listLeads: (query: ListLeadsQuery) => Promise<ListLeadsResponse>;
   getJobById: (jobId: string) => Promise<JobRecord | null>;
@@ -145,6 +152,14 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
 
     return LoginResponseSchema.parse(login);
   });
+
+  // Public webhook routes - no auth, signature-verified
+  if (options.trengoWebhookSecret) {
+    registerWebhookRoutes(app, {
+      trengoWebhookSecret: options.trengoWebhookSecret,
+      enqueueReplyClassify: options.enqueueReplyClassify,
+    });
+  }
 
   // Protected routes - JWT guard applied to all routes registered in this plugin
   const authGuard = buildAuthGuard(options.accessTokenSecret);
@@ -271,14 +286,25 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     } else {
       registerScoringRoutes(api);
     }
+    const messagingDeps: MessagingRouteDependencies = {};
     if (options.enqueueMessageSend) {
-      registerMessagingRoutes(api, { enqueueMessageSend: options.enqueueMessageSend });
+      messagingDeps.enqueueMessageSend = options.enqueueMessageSend;
+    }
+    if (options.enqueueMessageGenerate) {
+      messagingDeps.enqueueMessageGenerate = options.enqueueMessageGenerate;
+    }
+    if (messagingDeps.enqueueMessageSend || messagingDeps.enqueueMessageGenerate) {
+      registerMessagingRoutes(api, messagingDeps);
     } else {
       registerMessagingRoutes(api);
     }
     registerLearningRoutes(api);
     registerFeedbackRoutes(api);
-    registerAnalyticsRoutes(api);
+    if (options.enqueueAnalyticsRollup) {
+      registerAnalyticsRoutes(api, { enqueueAnalyticsRollup: options.enqueueAnalyticsRollup });
+    } else {
+      registerAnalyticsRoutes(api);
+    }
   };
 
   app.register(protectedRoutes);

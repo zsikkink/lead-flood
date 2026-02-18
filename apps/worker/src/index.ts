@@ -1,5 +1,6 @@
 import PgBoss, { type Job } from 'pg-boss';
 
+import { prisma } from '@lead-flood/db';
 import { createLogger } from '@lead-flood/observability';
 import {
   ApolloDiscoveryAdapter,
@@ -36,6 +37,11 @@ import {
   handleFeaturesComputeJob,
   type FeaturesComputeJobPayload,
 } from './jobs/features.compute.job.js';
+import {
+  FOLLOWUP_CHECK_JOB_NAME,
+  handleFollowupCheckJob,
+  type FollowupCheckJobPayload,
+} from './jobs/followup.check.job.js';
 import { handleHeartbeatJob, type HeartbeatJobPayload } from './jobs/heartbeat.job.js';
 import {
   LABELS_GENERATE_JOB_NAME,
@@ -64,10 +70,22 @@ import {
   type ModelTrainJobPayload,
 } from './jobs/model.train.job.js';
 import {
+  NOTIFY_SALES_JOB_NAME,
+  handleNotifySalesJob,
+  type NotifySalesJobPayload,
+  NOTIFY_SALES_RETRY_OPTIONS,
+} from './jobs/notify.sales.job.js';
+import {
+  REPLY_CLASSIFY_JOB_NAME,
+  handleReplyClassifyJob,
+  type ReplyClassifyJobPayload,
+} from './jobs/reply.classify.job.js';
+import {
   SCORING_COMPUTE_JOB_NAME,
   handleScoringComputeJob,
   type ScoringComputeJobPayload,
 } from './jobs/scoring.compute.job.js';
+import { WhatsAppRateLimiter } from './messaging/rate-limiter.js';
 import { dispatchPendingOutboxEvents } from './outbox-dispatcher.js';
 import { ensureWorkerQueues, HEARTBEAT_QUEUE_NAME, LEAD_ENRICH_STUB_QUEUE_NAME } from './queues.js';
 import { registerWorkerSchedules } from './schedules.js';
@@ -178,6 +196,10 @@ async function main(): Promise<void> {
     apiKey: env.TRENGO_API_KEY,
     baseUrl: env.TRENGO_BASE_URL,
     channelId: env.TRENGO_CHANNEL_ID,
+  });
+
+  const whatsAppRateLimiter = new WhatsAppRateLimiter(prisma, {
+    dailySendLimit: env.WHATSAPP_DAILY_SEND_LIMIT,
   });
 
   let outboxDispatchRunning = false;
@@ -291,6 +313,7 @@ async function main(): Promise<void> {
     (jobLogger, job) =>
       handleMessageGenerateJob(jobLogger, job, {
         openAiAdapter,
+        boss,
       }),
   );
   await registerWorker<MessageSendJobPayload>(
@@ -301,6 +324,8 @@ async function main(): Promise<void> {
       handleMessageSendJob(jobLogger, job, {
         resendAdapter,
         trengoAdapter,
+        rateLimiter: whatsAppRateLimiter,
+        boss,
       }),
   );
   await registerWorker<AnalyticsRollupJobPayload>(
@@ -308,6 +333,36 @@ async function main(): Promise<void> {
     logger,
     ANALYTICS_ROLLUP_JOB_NAME,
     handleAnalyticsRollupJob,
+  );
+  await registerWorker<FollowupCheckJobPayload>(
+    boss,
+    logger,
+    FOLLOWUP_CHECK_JOB_NAME,
+    (jobLogger, job) => handleFollowupCheckJob(jobLogger, job, { boss }),
+  );
+  await registerWorker<ReplyClassifyJobPayload>(
+    boss,
+    logger,
+    REPLY_CLASSIFY_JOB_NAME,
+    (jobLogger, job) =>
+      handleReplyClassifyJob(jobLogger, job, {
+        openAiAdapter,
+        boss,
+        notifySalesJobName: NOTIFY_SALES_JOB_NAME,
+        notifySalesRetryOptions: NOTIFY_SALES_RETRY_OPTIONS,
+      }),
+  );
+  await registerWorker<NotifySalesJobPayload>(
+    boss,
+    logger,
+    NOTIFY_SALES_JOB_NAME,
+    (jobLogger, job) =>
+      handleNotifySalesJob(jobLogger, job, {
+        slackWebhookUrl: env.SLACK_WEBHOOK_URL,
+        trengoApiKey: env.TRENGO_API_KEY,
+        trengoBaseUrl: env.TRENGO_BASE_URL,
+        trengoInternalConversationId: env.TRENGO_INTERNAL_CONVERSATION_ID,
+      }),
   );
 
   const shutdown = async (signal: string): Promise<void> => {

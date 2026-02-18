@@ -6,6 +6,11 @@ import {
   ANALYTICS_ROLLUP_RETRY_OPTIONS,
 } from './jobs/analytics.rollup.job.js';
 import {
+  FOLLOWUP_CHECK_JOB_NAME,
+  type FollowupCheckJobPayload,
+  FOLLOWUP_CHECK_RETRY_OPTIONS,
+} from './jobs/followup.check.job.js';
+import {
   type HeartbeatJobPayload,
 } from './jobs/heartbeat.job.js';
 import {
@@ -97,6 +102,19 @@ export async function registerWorkerSchedules(boss: Pick<PgBoss, 'schedule'>): P
     {
       singletonKey: 'schedule:analytics.rollup',
       ...ANALYTICS_ROLLUP_RETRY_OPTIONS,
+    },
+  );
+
+  await boss.schedule(
+    FOLLOWUP_CHECK_JOB_NAME,
+    '0 5-14 * * *',
+    {
+      runId: 'scheduled:followup.check',
+      correlationId: 'scheduler:followup.check',
+    } satisfies FollowupCheckJobPayload,
+    {
+      singletonKey: 'schedule:followup.check',
+      ...FOLLOWUP_CHECK_RETRY_OPTIONS,
     },
   );
 }

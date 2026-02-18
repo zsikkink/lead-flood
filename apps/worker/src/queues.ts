@@ -7,6 +7,7 @@ import {
 } from './jobs/analytics.rollup.job.js';
 import { DISCOVERY_RUN_JOB_NAME, DISCOVERY_RUN_RETRY_OPTIONS } from './jobs/discovery.run.job.js';
 import { ENRICHMENT_RUN_JOB_NAME, ENRICHMENT_RUN_RETRY_OPTIONS } from './jobs/enrichment.run.job.js';
+import { FOLLOWUP_CHECK_JOB_NAME, FOLLOWUP_CHECK_RETRY_OPTIONS } from './jobs/followup.check.job.js';
 import {
   FEATURES_COMPUTE_JOB_NAME,
   FEATURES_COMPUTE_RETRY_OPTIONS,
@@ -14,8 +15,10 @@ import {
 import { LABELS_GENERATE_JOB_NAME, LABELS_GENERATE_RETRY_OPTIONS } from './jobs/labels.generate.job.js';
 import { MESSAGE_GENERATE_JOB_NAME, MESSAGE_GENERATE_RETRY_OPTIONS } from './jobs/message.generate.job.js';
 import { MESSAGE_SEND_JOB_NAME, MESSAGE_SEND_RETRY_OPTIONS } from './jobs/message.send.job.js';
+import { NOTIFY_SALES_JOB_NAME, NOTIFY_SALES_RETRY_OPTIONS } from './jobs/notify.sales.job.js';
 import { MODEL_EVALUATE_JOB_NAME, MODEL_EVALUATE_RETRY_OPTIONS } from './jobs/model.evaluate.job.js';
 import { MODEL_TRAIN_JOB_NAME, MODEL_TRAIN_RETRY_OPTIONS } from './jobs/model.train.job.js';
+import { REPLY_CLASSIFY_JOB_NAME, REPLY_CLASSIFY_RETRY_OPTIONS } from './jobs/reply.classify.job.js';
 import {
   SCORING_COMPUTE_JOB_NAME,
   SCORING_COMPUTE_RETRY_OPTIONS,
@@ -127,6 +130,18 @@ export const WORKER_QUEUE_DEFINITIONS: readonly WorkerQueueDefinition[] = [
   {
     name: ANALYTICS_ROLLUP_JOB_NAME,
     retryOptions: normalizeRetryOptions(ANALYTICS_ROLLUP_JOB_NAME, ANALYTICS_ROLLUP_RETRY_OPTIONS),
+  },
+  {
+    name: FOLLOWUP_CHECK_JOB_NAME,
+    retryOptions: normalizeRetryOptions(FOLLOWUP_CHECK_JOB_NAME, FOLLOWUP_CHECK_RETRY_OPTIONS),
+  },
+  {
+    name: REPLY_CLASSIFY_JOB_NAME,
+    retryOptions: normalizeRetryOptions(REPLY_CLASSIFY_JOB_NAME, REPLY_CLASSIFY_RETRY_OPTIONS),
+  },
+  {
+    name: NOTIFY_SALES_JOB_NAME,
+    retryOptions: normalizeRetryOptions(NOTIFY_SALES_JOB_NAME, NOTIFY_SALES_RETRY_OPTIONS),
   },
 ] as const;
 
