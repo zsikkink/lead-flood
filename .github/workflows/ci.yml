@@ -55,7 +55,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply database migrations
-        run: pnpm db:migrate
+        run: NODE_ENV=test pnpm db:migrate
 
       - name: Seed database
         run: pnpm db:seed
@@ -127,7 +127,7 @@ jobs:
         run: pnpm build
 
       - name: Apply database migrations
-        run: pnpm db:migrate
+        run: NODE_ENV=test pnpm db:migrate
 
       - name: Production API smoke test
         run: |
