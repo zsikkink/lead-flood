@@ -38,7 +38,11 @@ export function FunnelChart({ data }: FunnelChartProps) {
     <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
       <h2 className="mb-5 text-base font-bold tracking-tight">Pipeline Funnel</h2>
       <style>{`
-        .recharts-bar-rectangle { pointer-events: none; }
+        .recharts-bar-rectangle { transition: filter 0.2s ease; }
+        .recharts-bar-rectangle:hover { filter: brightness(1.25); }
+        .recharts-wrapper { outline: none !important; }
+        .recharts-surface { outline: none !important; }
+        .recharts-surface:focus { outline: none !important; }
       `}</style>
       <ResponsiveContainer width="100%" height={360}>
         <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>

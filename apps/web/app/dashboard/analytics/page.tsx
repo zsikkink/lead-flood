@@ -163,22 +163,25 @@ export default function AnalyticsPage() {
           {FEATURE_EFFECTIVENESS.sort((a, b) => b.rate - a.rate).map((f) => (
             <div key={f.feature} className="flex items-center gap-4">
               <p className="w-44 shrink-0 text-sm font-medium">{f.feature}</p>
-              <div className="flex-1">
-                <div className="h-6 overflow-hidden rounded-full bg-zbooni-dark/60">
-                  <div
-                    className="flex h-full items-center rounded-full px-2.5 text-[11px] font-bold"
-                    style={{
-                      width: `${Math.max(f.rate, 8)}%`,
-                      background: f.rate >= 50
-                        ? 'linear-gradient(90deg, #7BFF6B, #3CC8E0)'
-                        : f.rate > 0
-                          ? 'linear-gradient(90deg, #eab308, #f59e0b)'
-                          : 'hsl(240 8% 25%)',
-                    }}
-                  >
-                    {f.rate > 0 ? `${f.rate}%` : ''}
+              <div className="flex flex-1 items-center gap-2">
+                <div className="flex-1">
+                  <div className="h-6 overflow-hidden rounded-full bg-zbooni-dark/60">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.max(f.rate, 4)}%`,
+                        background: f.rate >= 50
+                          ? 'linear-gradient(90deg, #7BFF6B, #3CC8E0)'
+                          : f.rate > 0
+                            ? 'linear-gradient(90deg, #eab308, #f59e0b)'
+                            : 'hsl(240 8% 25%)',
+                      }}
+                    />
                   </div>
                 </div>
+                <span className="w-10 shrink-0 text-sm font-bold text-foreground">
+                  {f.rate}%
+                </span>
               </div>
               <p className="w-20 shrink-0 text-right text-xs text-muted-foreground/50">
                 {f.replies}/{f.pitched} replies

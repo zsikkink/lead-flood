@@ -33,7 +33,11 @@ export function ScoreDistributionChart({ data }: ScoreDistributionChartProps) {
     <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
       <h2 className="mb-4 text-base font-bold tracking-tight">Score Distribution</h2>
       <style>{`
-        .recharts-bar-rectangle { pointer-events: none; }
+        .recharts-bar-rectangle { transition: filter 0.2s ease; }
+        .recharts-bar-rectangle:hover { filter: brightness(1.25); }
+        .recharts-wrapper { outline: none !important; }
+        .recharts-surface { outline: none !important; }
+        .recharts-surface:focus { outline: none !important; }
       `}</style>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data.bands} margin={{ top: 20, right: 30, left: 20, bottom: 10 }}>

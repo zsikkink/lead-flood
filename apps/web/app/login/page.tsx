@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { useState, type FormEvent } from 'react';
 
 import { useAuth } from '../../src/hooks/use-auth.js';
 import { ApiError } from '../../src/lib/api-client.js';
@@ -56,18 +57,15 @@ export default function LoginPage() {
       <div className="relative w-full max-w-[380px]">
         {/* Logo / Brand */}
         <div className="mb-8 text-center">
-          <div className="mb-3 inline-flex items-center gap-2">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="32" height="32" rx="8" fill="url(#zbGrad)" />
-              <path d="M8 12h16l-8 8-8-8z" fill="#1C1C2E" opacity="0.9" />
-              <defs>
-                <linearGradient id="zbGrad" x1="0" y1="0" x2="32" y2="32">
-                  <stop stopColor="#7BFF6B" />
-                  <stop offset="1" stopColor="#3CC8E0" />
-                </linearGradient>
-              </defs>
-            </svg>
-            <span className="text-xl font-bold tracking-tight">Zbooni</span>
+          <div className="mb-4 inline-block">
+            <Image
+              src="/zbooni-logo.png"
+              alt="Zbooni"
+              width={160}
+              height={48}
+              priority
+              className="mx-auto"
+            />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">Sales OS</h1>
           <p className="mt-1 text-sm text-muted-foreground">
