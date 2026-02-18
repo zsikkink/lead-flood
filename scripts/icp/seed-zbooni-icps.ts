@@ -16,6 +16,7 @@ interface ZbooniIcpDefinition {
   name: string;
   purpose: string;
   targetIndustries: string[];
+  featureList: string[];
   rules: ZbooniRuleDefinition[];
 }
 
@@ -24,6 +25,14 @@ export const ZBOONI_ICP_DEFINITIONS: readonly ZbooniIcpDefinition[] = [
     name: 'Chat-First SMB Seller',
     purpose: 'High-intent SMB sellers that are conversation-first and socially active.',
     targetIndustries: ['Retail', 'Fashion', 'Food & Beverage', 'Beauty'],
+    featureList: [
+      'Catalog (CShop) to pre-list services and share them directly via chat',
+      'Multiple payment methods (Amex, Apple Pay, Google Pay, PayPal, etc.)',
+      'Live payment link editing without creating new links',
+      'In-app discount creation',
+      'Promo code creation and management',
+      'WhatsApp marketing campaigns for new customer acquisition',
+    ],
     rules: [
       {
         name: 'Country in supported MENA region',
@@ -130,6 +139,14 @@ export const ZBOONI_ICP_DEFINITIONS: readonly ZbooniIcpDefinition[] = [
     name: 'High-Touch Service Business',
     purpose: 'Service-led SMBs where conversational and assisted sales motions perform well.',
     targetIndustries: ['Professional Services', 'Education', 'Fitness'],
+    featureList: [
+      'Customizable payment links allowing staged or package-based payments',
+      'Multiple payment methods (Amex, Apple Pay, Google Pay, PayPal, Tabby, Tamara, etc.)',
+      'CRM to track client history, program enrolment, and notes',
+      'Promo code and discount creation for cohorts or referrals',
+      'WhatsApp marketing campaigns to re-engage past clients for new programs',
+      'Instant customer receipt generation',
+    ],
     rules: [
       {
         name: 'Country in supported MENA region',
@@ -209,6 +226,14 @@ export const ZBOONI_ICP_DEFINITIONS: readonly ZbooniIcpDefinition[] = [
     name: 'Shopify / Ecommerce Recovery',
     purpose: 'SMB ecommerce stores with signal for cart recovery and conversion lift.',
     targetIndustries: ['Ecommerce', 'Retail'],
+    featureList: [
+      'Support for large one-off payments on a single link (up to AED 1M per link)',
+      'Multiple payment methods (Amex, Apple Pay, Google Pay, PayPal, etc.)',
+      'Multi-MID support for failed transactions, enabling retries via alternate MIDs',
+      'Immediate live support via call or WhatsApp for urgent or failed transactions',
+      'Catalog (CShop) to pre-list services and share them directly via chat',
+      'CRM to track customer order history and add internal notes',
+    ],
     rules: [
       {
         name: 'Country in supported MENA region',
@@ -279,6 +304,15 @@ export const ZBOONI_ICP_DEFINITIONS: readonly ZbooniIcpDefinition[] = [
     name: 'Multi-Rep SMB Growth',
     purpose: 'Growing SMBs where multi-staff workflows and engagement predict expansion.',
     targetIndustries: ['Retail', 'Services', 'Hospitality'],
+    featureList: [
+      'Support for large one-off payments on a single link (up to AED 1M per link)',
+      'Customizable payment links allowing partial payments (deposit/balance/add-ons)',
+      'International card acceptance',
+      'Multiple payment methods (Amex, Apple Pay, Google Pay, PayPal, etc.)',
+      'Easy reconciliation to track payments, customers, and VAT',
+      'Catalog (CShop) to pre-list services and upsells via chat or QR code',
+      'CRM to track guest history, preferences, and add internal notes',
+    ],
     rules: [
       {
         name: 'Country in supported MENA region',
@@ -364,37 +398,30 @@ export async function seedZbooniIcps(): Promise<SeedResult> {
       select: { id: true },
     });
 
+    const icpData = {
+      description: definition.purpose,
+      qualificationLogic: 'WEIGHTED' as const,
+      metadataJson: {
+        seededBy: 'scripts/icp/seed-zbooni-icps.ts',
+        strategy: 'wide_net',
+        purpose: definition.purpose,
+      },
+      targetCountries: [...SUPPORTED_COUNTRIES],
+      targetIndustries: definition.targetIndustries,
+      featureList: definition.featureList,
+      isActive: true,
+      createdByUserId: null,
+    };
+
     const icp = existing
       ? await prisma.icpProfile.update({
           where: { id: existing.id },
-          data: {
-            description: definition.purpose,
-            qualificationLogic: 'WEIGHTED',
-            metadataJson: {
-              seededBy: 'scripts/icp/seed-zbooni-icps.ts',
-              strategy: 'wide_net',
-              purpose: definition.purpose,
-            },
-            targetCountries: [...SUPPORTED_COUNTRIES],
-            targetIndustries: definition.targetIndustries,
-            isActive: true,
-            createdByUserId: null,
-          },
+          data: icpData,
         })
       : await prisma.icpProfile.create({
           data: {
             name: definition.name,
-            description: definition.purpose,
-            qualificationLogic: 'WEIGHTED',
-            metadataJson: {
-              seededBy: 'scripts/icp/seed-zbooni-icps.ts',
-              strategy: 'wide_net',
-              purpose: definition.purpose,
-            },
-            targetCountries: [...SUPPORTED_COUNTRIES],
-            targetIndustries: definition.targetIndustries,
-            isActive: true,
-            createdByUserId: null,
+            ...icpData,
           },
         });
 
