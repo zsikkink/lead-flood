@@ -1,6 +1,7 @@
 'use client';
 
 import type { LeadScoreBand, LeadStatus } from '@lead-flood/contracts';
+import { Check, Eye, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
 
@@ -98,19 +99,27 @@ export default function LeadsPage() {
               <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
               <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Score</th>
               <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Created</th>
+              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
             </tr>
           </thead>
           <tbody>
             {leads.data?.items.map((lead) => (
               <tr
                 key={lead.id}
-                onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
-                className="cursor-pointer border-b border-border/30 transition-colors last:border-0 hover:bg-accent/50"
+                className="border-b border-border/30 transition-colors last:border-0 hover:bg-accent/50"
               >
-                <td className="px-4 py-3 font-medium">
+                <td
+                  className="cursor-pointer px-4 py-3 font-medium"
+                  onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
+                >
                   {lead.firstName} {lead.lastName}
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{lead.email}</td>
+                <td
+                  className="cursor-pointer px-4 py-3 text-muted-foreground"
+                  onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
+                >
+                  {lead.email}
+                </td>
                 <td className="px-4 py-3">
                   <LeadStatusBadge status={lead.status} />
                 </td>
@@ -124,11 +133,42 @@ export default function LeadsPage() {
                 <td className="px-4 py-3 text-muted-foreground">
                   {new Date(lead.createdAt).toLocaleDateString()}
                 </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
+                      title="View details"
+                      className="rounded-md p-1.5 text-muted-foreground/50 transition-colors hover:bg-accent/50 hover:text-foreground"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </button>
+                    {lead.status === 'enriched' || lead.status === 'new' ? (
+                      <>
+                        <button
+                          type="button"
+                          title="Approve for messaging"
+                          className="rounded-md p-1.5 text-muted-foreground/50 transition-colors hover:bg-zbooni-green/15 hover:text-zbooni-green"
+                          onClick={() => router.push(`/dashboard/messages?lead=${lead.id}`)}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Reject lead"
+                          className="rounded-md p-1.5 text-muted-foreground/50 transition-colors hover:bg-red-500/15 hover:text-red-400"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                </td>
               </tr>
             ))}
             {leads.isLoading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                   <div className="flex items-center justify-center gap-2">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-primary" />
                     Loading leads...
@@ -138,7 +178,7 @@ export default function LeadsPage() {
             ) : null}
             {!leads.isLoading && leads.data?.items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                   No leads found.
                 </td>
               </tr>

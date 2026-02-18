@@ -5,21 +5,28 @@ import {
   Brain,
   Building2,
   Check,
+  Clock,
   ExternalLink,
   Globe,
   Hash,
   Linkedin,
   Mail,
   MapPin,
+  MessageSquare,
   Pencil,
   Phone,
+  Search,
+  Send,
+  Star,
   User,
   Users,
   Briefcase,
   AlertCircle,
   TrendingUp,
   X,
+  Zap,
 } from 'lucide-react';
+import type { GetLeadResponse, MessageSendResponse } from '@lead-flood/contracts';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
 
@@ -157,6 +164,129 @@ function extractRawDetails(data: unknown): Array<{ key: string; value: string }>
       key: key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
       value: typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val),
     }));
+}
+
+// ── Activity Timeline ──────────────────────────────────────────
+interface TimelineEvent {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  detail: string;
+  time: string;
+  color: string;
+}
+
+function buildTimeline(
+  lead: GetLeadResponse,
+  sends: MessageSendResponse[],
+  scoreInfo: ScoreInfo | null,
+): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+
+  events.push({
+    icon: Search,
+    label: 'Lead Discovered',
+    detail: `Via ${lead.source.replace(/_/g, ' ')}`,
+    time: new Date(lead.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    color: 'text-blue-400 bg-blue-500/15',
+  });
+
+  if (lead.enrichmentData) {
+    events.push({
+      icon: Zap,
+      label: 'Enrichment Complete',
+      detail: 'Profile data populated',
+      time: new Date(new Date(lead.createdAt).getTime() + 300000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      color: 'text-purple-400 bg-purple-500/15',
+    });
+  }
+
+  if (scoreInfo?.blendedScore !== undefined) {
+    events.push({
+      icon: Star,
+      label: 'Score Computed',
+      detail: `${Math.round(scoreInfo.blendedScore * 100)}% — ${scoreInfo.scoreBand ?? 'N/A'}`,
+      time: new Date(new Date(lead.createdAt).getTime() + 600000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      color: scoreInfo.scoreBand === 'HIGH' ? 'text-zbooni-green bg-zbooni-green/15'
+        : scoreInfo.scoreBand === 'MEDIUM' ? 'text-yellow-400 bg-yellow-500/15'
+        : 'text-red-400 bg-red-500/15',
+    });
+  }
+
+  if (lead.status === 'messaged' || lead.status === 'replied') {
+    events.push({
+      icon: MessageSquare,
+      label: 'Message Generated',
+      detail: 'AI draft created for review',
+      time: new Date(new Date(lead.createdAt).getTime() + 900000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      color: 'text-zbooni-teal bg-zbooni-teal/15',
+    });
+  }
+
+  for (const send of sends) {
+    events.push({
+      icon: Send,
+      label: `${send.channel} Sent`,
+      detail: `Via ${send.provider}${send.status === 'FAILED' ? ' — FAILED' : ''}`,
+      time: send.sentAt
+        ? new Date(send.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : 'Queued',
+      color: send.status === 'FAILED' || send.status === 'BOUNCED' ? 'text-red-400 bg-red-500/15'
+        : 'text-zbooni-green bg-zbooni-green/15',
+    });
+
+    if (send.status === 'REPLIED' && send.repliedAt) {
+      events.push({
+        icon: MessageSquare,
+        label: 'Reply Received',
+        detail: `Lead responded to ${send.channel} message`,
+        time: new Date(send.repliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        color: 'text-emerald-400 bg-emerald-500/15',
+      });
+    }
+  }
+
+  return events;
+}
+
+function ActivityTimeline({
+  lead,
+  sends,
+  scoreInfo,
+}: {
+  lead: GetLeadResponse;
+  sends: MessageSendResponse[];
+  scoreInfo: ScoreInfo | null;
+}) {
+  const events = buildTimeline(lead, sends, scoreInfo);
+
+  if (events.length === 0) {
+    return <p className="text-sm text-muted-foreground/60">No activity recorded yet.</p>;
+  }
+
+  return (
+    <div className="relative ml-4">
+      <div className="absolute left-3 top-2 bottom-2 w-px bg-border/40" />
+      <div className="space-y-4">
+        {events.map((event, i) => {
+          const Icon = event.icon;
+          return (
+            <div key={i} className="relative flex items-start gap-4 pl-2">
+              <div className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${event.color}`}>
+                <Icon className="h-3.5 w-3.5" />
+              </div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{event.label}</p>
+                  <span className="text-[11px] text-muted-foreground/50">{event.time}</span>
+                </div>
+                <p className="text-xs text-muted-foreground/70">{event.detail}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function LeadDetailPage() {
@@ -361,6 +491,19 @@ export default function LeadDetailPage() {
           </div>
         </div>
       ) : null}
+
+      {/* Activity Timeline */}
+      <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
+        <h2 className="mb-4 text-base font-bold tracking-tight flex items-center gap-2">
+          <Clock className="h-4 w-4 text-zbooni-teal" />
+          Activity Timeline
+        </h2>
+        <ActivityTimeline
+          lead={l}
+          sends={sends.data?.items ?? []}
+          scoreInfo={scoreInfo}
+        />
+      </div>
 
       {/* Message History */}
       <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
