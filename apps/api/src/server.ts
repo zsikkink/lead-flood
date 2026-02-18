@@ -1,5 +1,6 @@
 import Fastify, { type FastifyBaseLogger, type FastifyInstance, type FastifyPluginAsync } from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import {
   CreateLeadRequestSchema,
   CreateLeadResponseSchema,
@@ -108,6 +109,12 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     credentials: true,
   });
 
+  app.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+    allowList: ['127.0.0.1'],
+  });
+
   app.addHook('onSend', (request, reply, payload, done) => {
     reply.header('x-request-id', request.id);
     done(null, payload);
@@ -131,7 +138,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     return ReadyResponseSchema.parse({ status: 'ready', db: 'ok' });
   });
 
-  app.post('/v1/auth/login', async (request, reply) => {
+  app.post('/v1/auth/login', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsedRequest = LoginRequestSchema.safeParse(request.body);
 
     if (!parsedRequest.success) {
@@ -181,6 +188,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
 
       try {
         const created = await options.createLeadAndEnqueue(parsedRequest.data);
+        reply.status(201);
         return CreateLeadResponseSchema.parse(created);
       } catch (error: unknown) {
         if (error instanceof LeadAlreadyExistsError) {

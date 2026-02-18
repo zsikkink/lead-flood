@@ -25,8 +25,20 @@ export interface MessagingSendJobPayload {
   correlationId?: string | undefined;
 }
 
+export interface MessageGenerateJobPayload {
+  runId: string;
+  leadId: string;
+  icpProfileId: string;
+  scorePredictionId?: string | undefined;
+  knowledgeEntryIds?: string[] | undefined;
+  channel?: string | undefined;
+  promptVersion?: string | undefined;
+  correlationId?: string | undefined;
+}
+
 export interface MessagingServiceDependencies {
   enqueueMessageSend: (payload: MessagingSendJobPayload) => Promise<void>;
+  enqueueMessageGenerate?: ((payload: MessageGenerateJobPayload) => Promise<void>) | undefined;
 }
 
 export interface MessagingService {
@@ -46,6 +58,20 @@ export function buildMessagingService(
 ): MessagingService {
   return {
     async generateMessageDraft(input) {
+      if (dependencies.enqueueMessageGenerate) {
+        const runId = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await dependencies.enqueueMessageGenerate({
+          runId,
+          leadId: input.leadId,
+          icpProfileId: input.icpProfileId,
+          scorePredictionId: input.scorePredictionId,
+          knowledgeEntryIds: input.knowledgeEntryIds,
+          channel: input.channel,
+          promptVersion: input.promptVersion,
+        });
+        // Return a placeholder response; the worker will create the actual draft
+        return { draftId: runId, variantIds: [] };
+      }
       return repository.generateMessageDraft(input);
     },
     async listMessageDrafts(query) {
@@ -73,9 +99,9 @@ export function buildMessagingService(
           channel: send.channel,
           scheduledAt: input.scheduledAt,
         });
-      } catch {
+      } catch (error: unknown) {
         // Send record already created with QUEUED status — pg-boss retry will handle it
-        // Log the enqueue failure but don't fail the request
+        console.error('[messaging] Failed to enqueue message send', { error, sendId: send.id });
       }
 
       return send;

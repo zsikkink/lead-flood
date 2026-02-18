@@ -48,7 +48,6 @@ import {
   handleLabelsGenerateJob,
   type LabelsGenerateJobPayload,
 } from './jobs/labels.generate.job.js';
-import { handleLeadEnrichJob, type LeadEnrichJobPayload } from './jobs/lead-enrich.job.js';
 import {
   MESSAGE_GENERATE_JOB_NAME,
   handleMessageGenerateJob,
@@ -87,7 +86,7 @@ import {
 } from './jobs/scoring.compute.job.js';
 import { WhatsAppRateLimiter } from './messaging/rate-limiter.js';
 import { dispatchPendingOutboxEvents } from './outbox-dispatcher.js';
-import { ensureWorkerQueues, HEARTBEAT_QUEUE_NAME, LEAD_ENRICH_STUB_QUEUE_NAME } from './queues.js';
+import { ensureWorkerQueues, HEARTBEAT_QUEUE_NAME } from './queues.js';
 import { registerWorkerSchedules } from './schedules.js';
 
 interface WorkerLogger {
@@ -227,12 +226,6 @@ async function main(): Promise<void> {
   }, 5000);
 
   await registerWorker<HeartbeatJobPayload>(boss, logger, HEARTBEAT_QUEUE_NAME, handleHeartbeatJob);
-  await registerWorker<LeadEnrichJobPayload>(
-    boss,
-    logger,
-    LEAD_ENRICH_STUB_QUEUE_NAME,
-    handleLeadEnrichJob,
-  );
   await registerWorker<DiscoveryRunJobPayload>(boss, logger, DISCOVERY_RUN_JOB_NAME, (jobLogger, job) =>
     handleDiscoveryRunJob(jobLogger, job, {
       boss,
@@ -368,8 +361,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutting down worker');
     clearInterval(outboxInterval);
-    await boss.stop();
-    process.exit(0);
+    await boss.stop({ graceful: true, timeout: 30_000 });
   };
 
   process.on('SIGINT', () => {

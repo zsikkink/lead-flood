@@ -468,12 +468,14 @@ export async function handleEnrichmentRunJob(
     });
 
     if (enrichmentResult.status === 'success') {
+      const phoneFromEnrichment = enrichmentResult.normalized.phone ?? undefined;
       await prisma.lead.update({
         where: { id: leadId },
         data: {
           status: 'enriched',
           enrichmentData: toInputJson(enrichmentResult.normalized),
           error: null,
+          ...(phoneFromEnrichment ? { phone: phoneFromEnrichment } : {}),
         },
       });
 

@@ -121,8 +121,8 @@ describe('lead pipeline e2e', () => {
       schema: env.PG_BOSS_SCHEMA,
     });
     await queueBoss.start();
-    await queueBoss.createQueue('lead.enrich.stub');
-    await queueBoss.work<LeadEnrichJobPayload>('lead.enrich.stub', async (jobs) => {
+    await queueBoss.createQueue('enrichment.run');
+    await queueBoss.work<LeadEnrichJobPayload>('enrichment.run', async (jobs) => {
       for (const job of jobs) {
         await processLeadEnrichJob(job);
       }
@@ -157,7 +157,7 @@ describe('lead pipeline e2e', () => {
 
             const jobExecution = await tx.jobExecution.create({
               data: {
-                type: 'lead.enrich.stub',
+                type: 'enrichment.run',
                 status: 'queued',
                 payload: {
                   leadId: lead.id,
@@ -173,7 +173,7 @@ describe('lead pipeline e2e', () => {
             };
           });
 
-          await queueBoss.send('lead.enrich.stub', {
+          await queueBoss.send('enrichment.run', {
             leadId: lead.id,
             jobExecutionId: jobExecution.id,
             source: input.source,
@@ -235,7 +235,7 @@ describe('lead pipeline e2e', () => {
       },
     });
 
-    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.statusCode).toBe(201);
     const created = createResponse.json() as { leadId: string; jobId: string };
 
     let leadStatus: string | null = null;

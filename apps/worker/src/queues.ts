@@ -25,7 +25,6 @@ import {
 } from './jobs/scoring.compute.job.js';
 
 export const HEARTBEAT_QUEUE_NAME = 'system.heartbeat';
-export const LEAD_ENRICH_STUB_QUEUE_NAME = 'lead.enrich.stub';
 
 export const HEARTBEAT_RETRY_OPTIONS: Pick<
   SendOptions,
@@ -35,16 +34,6 @@ export const HEARTBEAT_RETRY_OPTIONS: Pick<
   retryDelay: 5,
   retryBackoff: false,
   deadLetter: 'system.heartbeat.dead_letter',
-};
-
-export const LEAD_ENRICH_STUB_RETRY_OPTIONS: Pick<
-  SendOptions,
-  'retryLimit' | 'retryDelay' | 'retryBackoff' | 'deadLetter'
-> = {
-  retryLimit: 3,
-  retryDelay: 5,
-  retryBackoff: true,
-  deadLetter: 'lead.enrich.stub.dead_letter',
 };
 
 interface QueueRetryOptions {
@@ -86,10 +75,6 @@ export const WORKER_QUEUE_DEFINITIONS: readonly WorkerQueueDefinition[] = [
   {
     name: HEARTBEAT_QUEUE_NAME,
     retryOptions: normalizeRetryOptions(HEARTBEAT_QUEUE_NAME, HEARTBEAT_RETRY_OPTIONS),
-  },
-  {
-    name: LEAD_ENRICH_STUB_QUEUE_NAME,
-    retryOptions: normalizeRetryOptions(LEAD_ENRICH_STUB_QUEUE_NAME, LEAD_ENRICH_STUB_RETRY_OPTIONS),
   },
   {
     name: DISCOVERY_RUN_JOB_NAME,

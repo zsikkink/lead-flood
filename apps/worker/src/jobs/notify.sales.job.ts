@@ -74,9 +74,12 @@ export async function handleNotifySalesJob(
 
     const message = buildNotificationMessage(lead, classification, unclassified ?? false, reason);
     const fetchFn = deps?.fetchImpl ?? fetch;
+    let anyChannelSucceeded = false;
+    let anyChannelConfigured = false;
 
     // Send to Slack
     if (deps?.slackWebhookUrl) {
+      anyChannelConfigured = true;
       try {
         const slackResponse = await fetchFn(deps.slackWebhookUrl, {
           method: 'POST',
@@ -84,7 +87,9 @@ export async function handleNotifySalesJob(
           body: JSON.stringify({ text: message }),
         });
 
-        if (!slackResponse.ok) {
+        if (slackResponse.ok) {
+          anyChannelSucceeded = true;
+        } else {
           logger.warn(
             { jobId: job.id, status: slackResponse.status },
             'Slack notification failed',
@@ -97,6 +102,7 @@ export async function handleNotifySalesJob(
 
     // Send to Trengo internal conversation
     if (deps?.trengoApiKey && deps.trengoInternalConversationId) {
+      anyChannelConfigured = true;
       const trengoBaseUrl = deps.trengoBaseUrl ?? 'https://app.trengo.com/api/v2';
       try {
         const trengoResponse = await fetchFn(
@@ -114,7 +120,9 @@ export async function handleNotifySalesJob(
           },
         );
 
-        if (!trengoResponse.ok) {
+        if (trengoResponse.ok) {
+          anyChannelSucceeded = true;
+        } else {
           logger.warn(
             { jobId: job.id, status: trengoResponse.status },
             'Trengo internal notification failed',
@@ -123,6 +131,14 @@ export async function handleNotifySalesJob(
       } catch (trengoError: unknown) {
         logger.warn({ jobId: job.id, error: trengoError }, 'Trengo internal notification error');
       }
+    }
+
+    if (!anyChannelSucceeded) {
+      throw new Error(
+        anyChannelConfigured
+          ? 'All notification channels failed'
+          : 'No notification channels configured',
+      );
     }
 
     logger.info(

@@ -20,11 +20,13 @@ import { MessagingNotImplementedError } from './messaging.errors.js';
 import { PrismaMessagingRepository } from './messaging.repository.js';
 import {
   buildMessagingService,
+  type MessageGenerateJobPayload,
   type MessagingSendJobPayload,
 } from './messaging.service.js';
 
 export interface MessagingRouteDependencies {
   enqueueMessageSend?: ((payload: MessagingSendJobPayload) => Promise<void>) | undefined;
+  enqueueMessageGenerate?: ((payload: MessageGenerateJobPayload) => Promise<void>) | undefined;
 }
 
 function sendValidationError(reply: FastifyReply, requestId: string, message: string) {
@@ -60,6 +62,7 @@ export function registerMessagingRoutes(
       : async () => {
           throw new MessagingNotImplementedError('Messaging queue publisher is not configured');
         },
+    enqueueMessageGenerate: dependencies?.enqueueMessageGenerate,
   });
 
   app.post('/v1/messaging/drafts/generate', async (request, reply) => {

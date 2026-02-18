@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { z } from 'zod';
 
 export interface JwtClaims {
   sub: string;
@@ -7,6 +8,14 @@ export interface JwtClaims {
   iat: number;
   exp: number;
 }
+
+const JwtClaimsSchema = z.object({
+  sub: z.string(),
+  sid: z.string(),
+  type: z.enum(['access', 'refresh']),
+  iat: z.number(),
+  exp: z.number(),
+});
 
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -39,12 +48,17 @@ export function verifyJwt(token: string, secret: string): JwtClaims | null {
     return null;
   }
 
-  let claims: JwtClaims;
+  let raw: unknown;
   try {
-    claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as JwtClaims;
+    raw = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
   } catch {
     return null;
   }
 
-  return claims;
+  const parsed = JwtClaimsSchema.safeParse(raw);
+  if (!parsed.success) {
+    return null;
+  }
+
+  return parsed.data;
 }

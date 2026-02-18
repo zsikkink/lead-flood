@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
+    "@fastify/rate-limit": "^10.3.0",
     "@lead-flood/contracts": "workspace:*",
     "@lead-flood/db": "workspace:*",
     "@lead-flood/observability": "workspace:*",

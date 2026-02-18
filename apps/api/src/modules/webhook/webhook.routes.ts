@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   ErrorResponseSchema,
   type ReplyClassifyJobPayload,
@@ -37,14 +37,30 @@ function verifyTrengoSignature(
   }
 }
 
+function getRawBody(request: FastifyRequest): string {
+  return (request as unknown as { rawBody?: string }).rawBody ?? JSON.stringify(request.body);
+}
+
 export function registerWebhookRoutes(
   app: FastifyInstance,
   deps: WebhookRouteDependencies,
 ): void {
-  app.post('/v1/webhooks/trengo', async (request, reply) => {
-    // Verify HMAC signature
+  // Capture raw body for HMAC verification — scoped to this plugin only
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    try {
+      const raw = (body as Buffer).toString();
+      (req as unknown as { rawBody: string }).rawBody = raw;
+      const json = JSON.parse(raw) as unknown;
+      done(null, json);
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
+
+  app.post('/v1/webhooks/trengo', { config: { rateLimit: { max: 200, timeWindow: '1 minute' } } }, async (request, reply) => {
+    // Verify HMAC signature using the original raw body bytes
     const signature = request.headers['x-trengo-signature'] as string | undefined;
-    const rawBody = JSON.stringify(request.body);
+    const rawBody = getRawBody(request);
 
     if (!signature || !verifyTrengoSignature(rawBody, signature, deps.trengoWebhookSecret)) {
       reply.status(401);

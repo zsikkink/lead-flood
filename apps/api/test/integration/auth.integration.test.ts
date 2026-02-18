@@ -55,7 +55,7 @@ describe('POST /v1/auth/login integration', () => {
         firstName: 'Integration',
         lastName: 'User',
         isActive: true,
-        passwordHash: hashPassword(password),
+        passwordHash: await hashPassword(password),
       },
     });
 

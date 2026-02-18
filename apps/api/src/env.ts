@@ -31,6 +31,7 @@ const ApiEnvSchema = z.object({
   ENRICHMENT_ENABLED: z.coerce.boolean().optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_GENERATION_MODEL: z.string().min(1).optional(),
+  TRENGO_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 export type ApiEnv = z.infer<typeof ApiEnvSchema>;

@@ -203,6 +203,7 @@ export class ClearbitAdapter {
 
     return {
       email: normalizeString(value.email) ?? normalizeString(request.email),
+      phone: null,
       domain,
       companyName: normalizeString(company?.name) ?? normalizeString(value.name),
       industry: normalizeString(company?.category && (company.category as Record<string, unknown>).industry),

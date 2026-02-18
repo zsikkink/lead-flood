@@ -12,6 +12,7 @@ const validLogin: LoginRequest = {
 
 describe('buildAuthenticateUser', () => {
   it('returns tokens and persists session for valid credentials', async () => {
+    const passwordHash = await hashPassword('demo-password');
     const createSession = vi.fn(async () => {});
     const authenticateUser = buildAuthenticateUser({
       findUserByEmail: async () => ({
@@ -19,7 +20,7 @@ describe('buildAuthenticateUser', () => {
         email: 'demo@lead-flood.local',
         firstName: 'Demo',
         lastName: 'User',
-        passwordHash: hashPassword('demo-password'),
+        passwordHash,
         isActive: true,
       }),
       createSession,
@@ -44,6 +45,7 @@ describe('buildAuthenticateUser', () => {
   });
 
   it('returns null for invalid credentials', async () => {
+    const passwordHash = await hashPassword('demo-password');
     const createSession = vi.fn(async () => {});
     const authenticateUser = buildAuthenticateUser({
       findUserByEmail: async () => ({
@@ -51,7 +53,7 @@ describe('buildAuthenticateUser', () => {
         email: 'demo@lead-flood.local',
         firstName: 'Demo',
         lastName: 'User',
-        passwordHash: hashPassword('demo-password'),
+        passwordHash,
         isActive: true,
       }),
       createSession,
@@ -69,13 +71,14 @@ describe('buildAuthenticateUser', () => {
   });
 
   it('returns null for inactive user', async () => {
+    const passwordHash = await hashPassword('demo-password');
     const authenticateUser = buildAuthenticateUser({
       findUserByEmail: async () => ({
         id: 'user_1',
         email: 'demo@lead-flood.local',
         firstName: 'Demo',
         lastName: 'User',
-        passwordHash: hashPassword('demo-password'),
+        passwordHash,
         isActive: false,
       }),
       createSession: async () => {},

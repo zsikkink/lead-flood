@@ -172,7 +172,7 @@ describe('buildServer', () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(201);
     expect(response.json()).toEqual({
       leadId: 'lead_1',
       jobId: 'job_1',
@@ -239,6 +239,7 @@ describe('buildServer', () => {
         firstName: 'Ada',
         lastName: 'Lovelace',
         email: 'ada@example.com',
+        phone: null,
         source: 'manual',
         status: 'enriched',
         enrichmentData: { company: 'Analytical Engines' },
@@ -283,7 +284,7 @@ describe('buildServer', () => {
       ...makeDefaultOptions(),
       getJobById: async () => ({
         id: 'job_1',
-        type: 'lead.enrich.stub',
+        type: 'enrichment.run',
         status: 'completed',
         attempts: 1,
         leadId: 'lead_1',

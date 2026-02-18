@@ -32,7 +32,6 @@ async function main(): Promise<void> {
   });
 
   await boss.start();
-  await boss.createQueue('lead.enrich.stub');
   await boss.createQueue('discovery.run');
   await boss.createQueue('enrichment.run');
   await boss.createQueue('scoring.compute');
@@ -97,7 +96,7 @@ async function main(): Promise<void> {
 
           const jobExecution = await tx.jobExecution.create({
             data: {
-              type: 'lead.enrich.stub',
+              type: 'enrichment.run',
               status: 'queued',
               payload: {
                 leadId: lead.id,
@@ -109,7 +108,7 @@ async function main(): Promise<void> {
 
           const outboxEvent = await tx.outboxEvent.create({
             data: {
-              type: 'lead.enrich.stub',
+              type: 'enrichment.run',
               payload: {
                 leadId: lead.id,
                 jobExecutionId: jobExecution.id,
@@ -128,7 +127,7 @@ async function main(): Promise<void> {
 
         try {
           await boss.send(
-            'lead.enrich.stub',
+            'enrichment.run',
             {
               leadId: lead.id,
               jobExecutionId: jobExecution.id,

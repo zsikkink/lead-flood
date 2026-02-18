@@ -1076,121 +1076,127 @@ export async function handleDiscoveryRunJob(
 
     for (const discoveredLead of discoveryResult.leads) {
       const fallbackName = deriveLeadName(discoveredLead.email);
-      const existingLead = await prisma.lead.findUnique({
-        where: { email: discoveredLead.email },
-        select: { id: true },
-      });
 
-      const lead = await prisma.lead.upsert({
-        where: { email: discoveredLead.email },
-        create: {
-          firstName: discoveredLead.firstName || fallbackName.firstName,
-          lastName: discoveredLead.lastName || fallbackName.lastName,
-          email: discoveredLead.email,
-          source: selectedProvider.toLowerCase(),
-          status: 'new',
-        },
-        update: {
-          firstName: discoveredLead.firstName || fallbackName.firstName,
-          lastName: discoveredLead.lastName || fallbackName.lastName,
-          source: selectedProvider.toLowerCase(),
-        },
-      });
+      // Wrap per-lead DB writes in a transaction to avoid orphaned records on crash
+      const { lead, enrichmentPayload } = await prisma.$transaction(async (tx) => {
+        const existingLead = await tx.lead.findUnique({
+          where: { email: discoveredLead.email },
+          select: { id: true },
+        });
 
-      createdLeads += 1;
+        const txLead = await tx.lead.upsert({
+          where: { email: discoveredLead.email },
+          create: {
+            firstName: discoveredLead.firstName || fallbackName.firstName,
+            lastName: discoveredLead.lastName || fallbackName.lastName,
+            email: discoveredLead.email,
+            source: selectedProvider.toLowerCase(),
+            status: 'new',
+          },
+          update: {
+            firstName: discoveredLead.firstName || fallbackName.firstName,
+            lastName: discoveredLead.lastName || fallbackName.lastName,
+            source: selectedProvider.toLowerCase(),
+          },
+        });
 
-      const discoveryRecord = await prisma.leadDiscoveryRecord.upsert({
-        where: {
-          leadId_icpProfileId_provider_providerRecordId: {
-            leadId: lead.id,
+        const txDiscoveryRecord = await tx.leadDiscoveryRecord.upsert({
+          where: {
+            leadId_icpProfileId_provider_providerRecordId: {
+              leadId: txLead.id,
+              icpProfileId: normalizedIcpProfileId,
+              provider: selectedProvider,
+              providerRecordId: discoveredLead.providerRecordId,
+            },
+          },
+          create: {
+            leadId: txLead.id,
             icpProfileId: normalizedIcpProfileId,
             provider: selectedProvider,
             providerRecordId: discoveredLead.providerRecordId,
+            providerCursor: discoveryPayload.cursor ?? null,
+            queryHash,
+            status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
+            rawPayload: toInputJson(discoveredLead.raw),
+            discoveredAt: new Date(),
           },
-        },
-        create: {
-          leadId: lead.id,
+          update: {
+            providerCursor: discoveryPayload.cursor ?? null,
+            queryHash,
+            status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
+            rawPayload: toInputJson(discoveredLead.raw),
+            discoveredAt: new Date(),
+            errorMessage: null,
+          },
+        });
+
+        // Keep JobExecution visibility for operators, but pipeline correctness uses LeadDiscoveryRecord.
+        await tx.jobExecution.create({
+          data: {
+            type: DISCOVERY_RECORD_JOB_TYPE,
+            status: 'completed',
+            attempts: 1,
+            payload: {
+              runId,
+              correlationId: effectiveCorrelationId,
+              icpProfileId: normalizedIcpProfileId,
+              selectedProvider,
+              providerSource: discoveryResult.source,
+              provider: discoveredLead.provider,
+              providerRecordId: discoveredLead.providerRecordId,
+              raw: discoveredLead.raw,
+              discoveryRecordId: txDiscoveryRecord.id,
+            } as Prisma.InputJsonValue,
+            result: toInputJson({
+              normalized: discoveredLead,
+            }),
+            leadId: txLead.id,
+            startedAt: new Date(),
+            finishedAt: new Date(),
+          },
+        });
+
+        const enrichmentJobExecution = await tx.jobExecution.create({
+          data: {
+            type: ENRICHMENT_RUN_JOB_NAME,
+            status: 'queued',
+            payload: {
+              runId,
+              leadId: txLead.id,
+              provider: dependencies.defaultEnrichmentProvider,
+              correlationId: effectiveCorrelationId,
+              jobExecutionId: null,
+              discoveryRecordId: txDiscoveryRecord.id,
+              icpProfileId: normalizedIcpProfileId,
+            },
+            leadId: txLead.id,
+          },
+        });
+
+        const txEnrichmentPayload: EnrichmentRunJobPayload = {
+          runId,
+          leadId: txLead.id,
+          provider: dependencies.defaultEnrichmentProvider,
+          correlationId: effectiveCorrelationId,
+          jobExecutionId: enrichmentJobExecution.id,
+          discoveryRecordId: txDiscoveryRecord.id,
           icpProfileId: normalizedIcpProfileId,
-          provider: selectedProvider,
-          providerRecordId: discoveredLead.providerRecordId,
-          providerCursor: discoveryPayload.cursor ?? null,
-          queryHash,
-          status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
-          rawPayload: toInputJson(discoveredLead.raw),
-          discoveredAt: new Date(),
-        },
-        update: {
-          providerCursor: discoveryPayload.cursor ?? null,
-          queryHash,
-          status: existingLead ? 'DUPLICATE' : 'DISCOVERED',
-          rawPayload: toInputJson(discoveredLead.raw),
-          discoveredAt: new Date(),
-          errorMessage: null,
-        },
+        };
+
+        await tx.jobExecution.update({
+          where: { id: enrichmentJobExecution.id },
+          data: {
+            payload: toInputJson(txEnrichmentPayload),
+          },
+        });
+
+        return { lead: txLead, enrichmentPayload: txEnrichmentPayload };
       });
 
+      createdLeads += 1;
       persistedDiscoveryRecords += 1;
 
-      // Keep JobExecution visibility for operators, but pipeline correctness uses LeadDiscoveryRecord.
-      await prisma.jobExecution.create({
-        data: {
-          type: DISCOVERY_RECORD_JOB_TYPE,
-          status: 'completed',
-          attempts: 1,
-          payload: {
-            runId,
-            correlationId: effectiveCorrelationId,
-            icpProfileId: normalizedIcpProfileId,
-            selectedProvider,
-            providerSource: discoveryResult.source,
-            provider: discoveredLead.provider,
-            providerRecordId: discoveredLead.providerRecordId,
-            raw: discoveredLead.raw,
-            discoveryRecordId: discoveryRecord.id,
-          } as Prisma.InputJsonValue,
-          result: toInputJson({
-            normalized: discoveredLead,
-          }),
-          leadId: lead.id,
-          startedAt: new Date(),
-          finishedAt: new Date(),
-        },
-      });
-
-      const enrichmentJobExecution = await prisma.jobExecution.create({
-        data: {
-          type: ENRICHMENT_RUN_JOB_NAME,
-          status: 'queued',
-          payload: {
-            runId,
-            leadId: lead.id,
-            provider: dependencies.defaultEnrichmentProvider,
-            correlationId: effectiveCorrelationId,
-            jobExecutionId: null,
-            discoveryRecordId: discoveryRecord.id,
-            icpProfileId: normalizedIcpProfileId,
-          },
-          leadId: lead.id,
-        },
-      });
-
-      const enrichmentPayload: EnrichmentRunJobPayload = {
-        runId,
-        leadId: lead.id,
-        provider: dependencies.defaultEnrichmentProvider,
-        correlationId: effectiveCorrelationId,
-        jobExecutionId: enrichmentJobExecution.id,
-        discoveryRecordId: discoveryRecord.id,
-        icpProfileId: normalizedIcpProfileId,
-      };
-
-      await prisma.jobExecution.update({
-        where: { id: enrichmentJobExecution.id },
-        data: {
-          payload: toInputJson(enrichmentPayload),
-        },
-      });
-
+      // Enqueue enrichment job outside the transaction (pg-boss is a separate system)
       await dependencies.boss.send(ENRICHMENT_RUN_JOB_NAME, enrichmentPayload, {
         singletonKey: `enrichment.run:${lead.id}:${dependencies.defaultEnrichmentProvider}`,
         ...ENRICHMENT_RUN_RETRY_OPTIONS,

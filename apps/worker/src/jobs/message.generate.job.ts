@@ -71,7 +71,7 @@ export async function handleMessageGenerateJob(
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, firstName: true, lastName: true, email: true },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true },
     });
 
     if (!lead) {
@@ -89,6 +89,12 @@ export async function handleMessageGenerateJob(
       orderBy: [{ computedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
+    const latestEnrichment = await prisma.leadEnrichmentRecord.findFirst({
+      where: { leadId },
+      orderBy: [{ enrichedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { normalizedPayload: true },
+    });
+
     const latestScore = scorePredictionId
       ? await prisma.leadScorePrediction.findUnique({
           where: { id: scorePredictionId },
@@ -103,10 +109,19 @@ export async function handleMessageGenerateJob(
         ? (latestSnapshot.featuresJson as Record<string, unknown>)
         : {};
 
+    const enrichmentPayload =
+      latestEnrichment?.normalizedPayload && typeof latestEnrichment.normalizedPayload === 'object'
+        ? (latestEnrichment.normalizedPayload as Record<string, unknown>)
+        : null;
+
+    const companyName =
+      (typeof enrichmentPayload?.companyName === 'string' ? enrichmentPayload.companyName : null) ??
+      (typeof enrichmentPayload?.company_name === 'string' ? enrichmentPayload.company_name : null);
+
     const groundingContext = {
       leadName: `${lead.firstName} ${lead.lastName}`,
       leadEmail: lead.email,
-      companyName: (featuresJson.has_company_name as string) ?? null,
+      companyName: companyName ?? null,
       industry: (featuresJson.industry as string) ?? null,
       country: (featuresJson.country as string) ?? null,
       featuresJson,

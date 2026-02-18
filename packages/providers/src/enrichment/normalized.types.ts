@@ -1,5 +1,6 @@
 export interface NormalizedEnrichmentPayload {
   email: string | null;
+  phone: string | null;
   domain: string | null;
   companyName: string | null;
   industry: string | null;

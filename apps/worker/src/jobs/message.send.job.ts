@@ -173,6 +173,19 @@ export async function handleMessageSendJob(
         }
       }
 
+      // Dedup check: if a MessageSend with this idempotencyKey is already SENT, skip
+      const existingSend = await prisma.messageSend.findFirst({
+        where: { idempotencyKey: send.idempotencyKey, status: 'SENT' },
+        select: { id: true, providerMessageId: true },
+      });
+      if (existingSend) {
+        logger.info(
+          { jobId: job.id, sendId, idempotencyKey: send.idempotencyKey, existingSendId: existingSend.id },
+          'WhatsApp send skipped — idempotency key already sent',
+        );
+        return;
+      }
+
       const result = await deps.trengoAdapter.sendMessage({
         to: send.lead.phone,
         bodyText: send.messageVariant.bodyText,
