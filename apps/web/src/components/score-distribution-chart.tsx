@@ -19,6 +19,12 @@ const BAND_COLORS: Record<string, string> = {
   HIGH: '#7BFF6B',
 };
 
+const BAND_GLOW: Record<string, string> = {
+  LOW: 'rgba(239, 68, 68, 0.4)',
+  MEDIUM: 'rgba(234, 179, 8, 0.4)',
+  HIGH: 'rgba(123, 255, 107, 0.4)',
+};
+
 interface ScoreDistributionChartProps {
   data: ScoreDistributionResponse;
 }
@@ -29,9 +35,23 @@ export function ScoreDistributionChart({ data }: ScoreDistributionChartProps) {
     return Math.ceil(max * 1.2);
   }, [data.bands]);
 
+  // Build glow CSS for each band dynamically
+  const glowStyles = data.bands
+    .map(
+      (b, i) => `
+      .score-bar-${i}:hover { filter: brightness(1.2) drop-shadow(0 0 8px ${BAND_GLOW[b.scoreBand] ?? 'rgba(107,114,128,0.4)'}); }
+      .score-bar-${i}:active { filter: brightness(1.3) drop-shadow(0 0 12px ${BAND_GLOW[b.scoreBand] ?? 'rgba(107,114,128,0.6)'}); }
+    `,
+    )
+    .join('');
+
   return (
     <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
       <h2 className="mb-4 text-base font-bold tracking-tight">Score Distribution</h2>
+      <style>{`
+        .recharts-bar-rectangle { transition: filter 0.2s ease; cursor: default; outline: none; }
+        ${glowStyles}
+      `}</style>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data.bands} margin={{ top: 20, right: 30, left: 20, bottom: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 10% 20%)" vertical={false} />
@@ -59,12 +79,16 @@ export function ScoreDistributionChart({ data }: ScoreDistributionChartProps) {
               padding: '8px 14px',
               boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
             }}
-            cursor={{ fill: 'hsl(240 8% 14% / 0.3)', radius: 6 }}
+            cursor={false}
             animationDuration={150}
           />
           <Bar dataKey="count" radius={[6, 6, 0, 0]} animationDuration={600}>
-            {data.bands.map((entry) => (
-              <Cell key={entry.scoreBand} fill={BAND_COLORS[entry.scoreBand] ?? '#6b7280'} />
+            {data.bands.map((entry, index) => (
+              <Cell
+                key={entry.scoreBand}
+                fill={BAND_COLORS[entry.scoreBand] ?? '#6b7280'}
+                className={`score-bar-${index}`}
+              />
             ))}
           </Bar>
         </BarChart>

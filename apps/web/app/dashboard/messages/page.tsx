@@ -20,7 +20,7 @@ const APPROVAL_OPTIONS = [
 export default function MessagesPage() {
   const { apiClient } = useAuth();
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<MessageApprovalStatus | undefined>('PENDING');
+  const [statusFilter, setStatusFilter] = useState<MessageApprovalStatus | undefined>(undefined);
 
   const drafts = useApiQuery(
     useCallback(

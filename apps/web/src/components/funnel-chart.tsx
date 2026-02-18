@@ -37,6 +37,11 @@ export function FunnelChart({ data }: FunnelChartProps) {
   return (
     <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
       <h2 className="mb-5 text-base font-bold tracking-tight">Pipeline Funnel</h2>
+      <style>{`
+        .recharts-bar-rectangle { transition: filter 0.2s ease, transform 0.2s ease; transform-origin: bottom center; }
+        .recharts-bar-rectangle:hover { filter: brightness(1.2) drop-shadow(0 0 8px rgba(123, 255, 107, 0.4)); }
+        .recharts-bar-rectangle:active { filter: brightness(1.3) drop-shadow(0 0 12px rgba(123, 255, 107, 0.6)); }
+      `}</style>
       <ResponsiveContainer width="100%" height={360}>
         <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 8% 18%)" vertical={false} />
@@ -65,7 +70,7 @@ export function FunnelChart({ data }: FunnelChartProps) {
               padding: '8px 14px',
               boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
             }}
-            cursor={{ fill: 'hsl(240 8% 14% / 0.3)', radius: 6 }}
+            cursor={false}
             animationDuration={150}
           />
           <Bar
