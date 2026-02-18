@@ -5,6 +5,7 @@ import { Prisma, prisma } from '@lead-flood/db';
 import type { DiscoveryRuntimeConfig } from '../config.js';
 import { normalizeQuery } from '../dedupe/normalize.js';
 import { incrementMetric } from '../metrics.js';
+import { normalizePhoneE164 } from '../normalization/phone.js';
 import { deriveRootDomainFromUrl } from '../providers/serpapi.client.js';
 import type {
   DiscoveryCountryCode,
@@ -109,36 +110,6 @@ const SCORE_WEIGHTS = {
   physicalAddressPresent: 0.1,
   recentActivity: 0.15,
 } as const;
-
-function normalizePhoneE164(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-
-  let normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-
-  normalized = normalized.replace(/\s+/g, '');
-  normalized = normalized.replace(/[().-]/g, '');
-
-  if (normalized.startsWith('00')) {
-    normalized = `+${normalized.slice(2)}`;
-  }
-
-  if (!normalized.startsWith('+')) {
-    normalized = `+${normalized.replace(/\D/g, '')}`;
-  } else {
-    normalized = `+${normalized.slice(1).replace(/\D/g, '')}`;
-  }
-
-  if (normalized.length < 8 || normalized.length > 16) {
-    return null;
-  }
-
-  return normalized;
-}
 
 function normalizeCity(value: string | null): string | null {
   if (!value) {
@@ -496,7 +467,7 @@ async function upsertBusinessFromLocalResult(
   local: NormalizedLocalBusiness,
 ): Promise<{ businessId: string; created: boolean }> {
   const websiteDomain = deriveRootDomainFromUrl(local.websiteUrl ?? local.url);
-  const phoneE164 = normalizePhoneE164(local.phone);
+  const phoneE164 = normalizePhoneE164(local.phone, task.country_code);
   const confidence = confidenceFromBusinessSignal(local);
   const signals = deriveBusinessSignals(local);
 
@@ -507,6 +478,7 @@ async function upsertBusinessFromLocalResult(
           select: {
             id: true,
             confidence: true,
+            websiteDomain: true,
             hasWhatsapp: true,
             hasInstagram: true,
             acceptsOnlinePayments: true,
@@ -524,6 +496,7 @@ async function upsertBusinessFromLocalResult(
       select: {
         id: true,
         confidence: true,
+        websiteDomain: true,
         hasWhatsapp: true,
         hasInstagram: true,
         acceptsOnlinePayments: true,
@@ -564,7 +537,10 @@ async function upsertBusinessFromLocalResult(
     if (phoneE164 !== null) {
       updateData.phoneE164 = phoneE164;
     }
-    if (websiteDomain !== null) {
+    if (
+      websiteDomain !== null &&
+      (existing.websiteDomain === null || existing.websiteDomain === websiteDomain)
+    ) {
       updateData.websiteDomain = websiteDomain;
     }
     if (local.rating !== null) {

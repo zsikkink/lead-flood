@@ -21,6 +21,7 @@
     "db:seed": "pnpm --filter @lead-flood/db prisma:seed",
     "icp:seed": "pnpm --filter @lead-flood/db build && pnpm --filter @lead-flood/worker exec tsx ../../scripts/icp/seed-zbooni-icps.ts",
     "discovery:seed": "pnpm --filter @lead-flood/discovery seed",
+    "discovery:backfill-phone-e164": "pnpm --filter @lead-flood/worker exec tsx ../../scripts/discovery/backfill-phone-e164.ts",
     "db:studio": "pnpm --filter @lead-flood/db prisma:studio",
     "learning:backfill-features": "pnpm --filter @lead-flood/db build && pnpm --filter @lead-flood/worker exec tsx ../../scripts/learning/backfill-features.ts",
     "dev:infra": "docker compose -f infra/docker/docker-compose.local.yml up -d",

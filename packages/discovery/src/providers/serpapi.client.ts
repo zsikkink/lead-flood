@@ -237,6 +237,122 @@ function parseInstagramHandle(value: unknown): string | null {
   return null;
 }
 
+function toUrlCandidate(value: unknown): string | null {
+  const input = normalizeString(value);
+  if (!input) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(input)) {
+    return input;
+  }
+
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/?#].*)?$/i.test(input)) {
+    return `https://${input}`;
+  }
+
+  return null;
+}
+
+function normalizeHost(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+function isGoogleMapsUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    if (!hostname.includes('google.')) {
+      return false;
+    }
+    return parsed.pathname.startsWith('/maps/');
+  } catch {
+    return false;
+  }
+}
+
+function isSocialProfileUrl(url: string): boolean {
+  const hostname = normalizeHost(url);
+  if (!hostname) {
+    return false;
+  }
+  return hostname === 'instagram.com' || hostname === 'facebook.com' || hostname === 'tiktok.com';
+}
+
+function pickWebsiteCandidate(candidates: unknown[]): string | null {
+  for (const candidate of candidates) {
+    const normalized = toUrlCandidate(candidate);
+    if (!normalized) {
+      continue;
+    }
+    if (isGoogleMapsUrl(normalized)) {
+      continue;
+    }
+    if (isSocialProfileUrl(normalized)) {
+      continue;
+    }
+    return normalized;
+  }
+  return null;
+}
+
+function collectLinkCandidates(value: unknown): string[] {
+  const candidates: string[] = [];
+
+  if (!value) {
+    return candidates;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+      const linkEntry = entry as Record<string, unknown>;
+      const linkCandidate =
+        normalizeString(linkEntry.website) ??
+        normalizeString(linkEntry.link) ??
+        normalizeString(linkEntry.url);
+      if (linkCandidate) {
+        candidates.push(linkCandidate);
+      }
+    }
+    return candidates;
+  }
+
+  if (typeof value === 'object') {
+    const linkMap = value as Record<string, unknown>;
+    const directCandidates = [
+      normalizeString(linkMap.website),
+      normalizeString(linkMap.link),
+      normalizeString(linkMap.url),
+      normalizeString(linkMap.instagram),
+      normalizeString(linkMap.profile),
+    ];
+    for (const candidate of directCandidates) {
+      if (candidate) {
+        candidates.push(candidate);
+      }
+    }
+  }
+
+  return candidates;
+}
+
+function extractInstagramHandleFromCandidates(candidates: unknown[]): string | null {
+  for (const candidate of candidates) {
+    const handle = parseInstagramHandle(candidate);
+    if (handle) {
+      return handle;
+    }
+  }
+  return null;
+}
+
 function normalizeOrganicResults(payload: SerpApiResponseRoot): NormalizedSearchResult[] {
   const organic = Array.isArray(payload.organic_results) ? payload.organic_results : [];
   const results: NormalizedSearchResult[] = [];
@@ -328,10 +444,10 @@ function normalizeLocalBusinesses(
       continue;
     }
 
+    const linkCandidates = collectLinkCandidates(value.links);
+    const websiteFromLinks = pickWebsiteCandidate(linkCandidates);
     const websiteUrl =
-      normalizeString(value.website) ??
-      normalizeString(value.link) ??
-      normalizeString(value.domain);
+      pickWebsiteCandidate([value.website, websiteFromLinks, value.link, value.domain]);
     const resultUrl =
       normalizeString(value.place_link) ??
       normalizeString(value.gps_coordinates && typeof value.gps_coordinates === 'object'
@@ -368,23 +484,13 @@ function normalizeLocalBusinesses(
       return parts[parts.length - 2] ?? null;
     })();
 
-    const instagramFromLinks = (() => {
-      if (Array.isArray(value.links)) {
-        for (const linkEntry of value.links) {
-          if (!linkEntry || typeof linkEntry !== 'object') {
-            continue;
-          }
-          const linkValue = linkEntry as Record<string, unknown>;
-          const handle =
-            parseInstagramHandle(linkValue.link) ??
-            parseInstagramHandle(linkValue.url);
-          if (handle) {
-            return handle;
-          }
-        }
-      }
-      return parseInstagramHandle(value.instagram);
-    })();
+    const instagramFromLinks = extractInstagramHandleFromCandidates([
+      value.instagram,
+      value.website,
+      value.link,
+      value.domain,
+      ...linkCandidates,
+    ]);
 
     businesses.push({
       id,

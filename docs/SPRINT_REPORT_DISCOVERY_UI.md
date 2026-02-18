@@ -265,3 +265,35 @@ pnpm --filter @lead-flood/web dev
 
 6. Reload the browser tab:
 - Live settings persist across reload (`enabled`, `intervalMs`, `onlyWhenRunning`).
+
+## Coverage Investigation: Website/IG
+
+### Summary
+
+- Added a coverage investigation package focused on why `website_domain` and `instagram_handle` are often null.
+- Added reproducible SQL diagnostics for overall coverage, task-type coverage, time-bucket coverage, and failure modes.
+- Added a payload inspection script to verify whether website/instagram signals exist in `business_evidence.raw_json`.
+- Identified and patched a parser gap for `SERP_GOOGLE_LOCAL` payloads that use nested `links.website`.
+- Added parser unit tests to prevent regression.
+- Wrote detailed findings and next-step plan in `docs/DISCOVERY_COVERAGE_REPORT.md`.
+
+### Files Added / Updated
+
+- `scripts/discovery/coverage.sql`
+- `scripts/discovery/inspect_payloads.ts`
+- `packages/discovery/src/providers/serpapi.client.ts`
+- `packages/discovery/src/providers/serpapi.client.test.ts`
+- `docs/DISCOVERY_COVERAGE_REPORT.md`
+
+### Verification
+
+```bash
+DB_URL="postgresql://postgres:postgres@localhost:5434/lead_flood"
+psql "$DB_URL" -f scripts/discovery/coverage.sql
+
+pnpm --filter @lead-flood/worker exec tsx ../../scripts/discovery/inspect_payloads.ts \
+  --limit 20 \
+  --timeBucket "2026-W08:small-validation-maps-patch"
+
+pnpm --filter @lead-flood/discovery test:unit
+```
