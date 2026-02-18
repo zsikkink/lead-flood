@@ -22,7 +22,7 @@ describe('ApiClient', () => {
       new Response(JSON.stringify(mockResponse), { status: 200 }),
     );
 
-    await client.listLeads({ page: 1, pageSize: 20 });
+    await client.listLeads({ page: 1, pageSize: 20, includeQualityMetrics: false });
 
     expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/v1/leads'),
@@ -66,7 +66,7 @@ describe('ApiClient', () => {
       new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
     );
 
-    await expect(client.listLeads({ page: 1, pageSize: 20 })).rejects.toThrow(
+    await expect(client.listLeads({ page: 1, pageSize: 20, includeQualityMetrics: false })).rejects.toThrow(
       'Session expired',
     );
   });
@@ -77,7 +77,7 @@ describe('ApiClient', () => {
       new Response(JSON.stringify(mockResponse), { status: 200 }),
     );
 
-    await client.listLeads({ page: 2, pageSize: 10, status: 'enriched' });
+    await client.listLeads({ page: 2, pageSize: 10, includeQualityMetrics: false, status: 'enriched' });
 
     const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(calledUrl).toContain('page=2');
