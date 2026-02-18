@@ -48,7 +48,7 @@ export async function handleReplyClassifyJob(
   job: Job<ReplyClassifyJobPayload>,
   deps: ReplyClassifyJobDependencies,
 ): Promise<void> {
-  const { runId, correlationId, feedbackEventId, replyText, leadId } = job.data;
+  const { runId, correlationId, feedbackEventId, replyText, leadId, messageSendId } = job.data;
 
   logger.info(
     { jobId: job.id, queue: job.name, runId, correlationId: correlationId ?? job.id, feedbackEventId, leadId },
@@ -150,14 +150,11 @@ export async function handleReplyClassifyJob(
 
       case 'OUT_OF_OFFICE': {
         // Re-schedule follow-up for 7 days + jitter from now
-        const latestSend = await prisma.messageSend.findFirst({
-          where: { leadId, status: 'SENT' },
-          orderBy: { sentAt: 'desc' },
-        });
-
-        if (latestSend) {
+        // Use messageSendId directly — by the time classification runs,
+        // the webhook has already set its status to REPLIED.
+        if (messageSendId) {
           await prisma.messageSend.update({
-            where: { id: latestSend.id },
+            where: { id: messageSendId },
             data: { nextFollowUpAfter: computeOooFollowUpAfter() },
           });
         }

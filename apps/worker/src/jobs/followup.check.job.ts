@@ -53,11 +53,11 @@ export async function handleFollowupCheckJob(
     // Find all MessageSends eligible for follow-up
     const eligibleSends = await prisma.messageSend.findMany({
       where: {
-        status: 'SENT',
+        status: { in: ['SENT', 'REPLIED'] },
         followUpNumber: { lt: 3 },
         nextFollowUpAfter: { not: null, lte: now },
         lead: {
-          status: 'messaged',
+          status: { in: ['messaged', 'replied'] },
         },
       },
       select: {
