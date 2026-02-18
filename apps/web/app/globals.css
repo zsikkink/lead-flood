@@ -1,9 +1,125 @@
-* {
-  box-sizing: border-box;
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-zbooni-green: #7BFF6B;
+  --color-zbooni-teal: #3CC8E0;
+  --color-zbooni-lime: #A8FF78;
+  --color-zbooni-dark: #1C1C2E;
+  --color-zbooni-navy: #252540;
+  --color-zbooni-slate: #2D2D4A;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
+/* ── Zbooni-branded dark theme (default) ──────────────────────── */
+@layer base {
+  :root {
+    --background: 240 15% 9%;
+    --foreground: 0 0% 96%;
+    --card: 240 12% 12%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 12% 14%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 130 100% 71%;
+    --primary-foreground: 240 15% 9%;
+    --secondary: 240 10% 18%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 240 10% 16%;
+    --muted-foreground: 240 5% 55%;
+    --accent: 240 10% 18%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 8% 18%;
+    --input: 240 8% 20%;
+    --ring: 160 80% 55%;
+    --radius: 0.625rem;
+    --chart-1: 130 100% 71%;
+    --chart-2: 187 72% 55%;
+    --chart-3: 280 65% 60%;
+    --chart-4: 43 96% 56%;
+    --chart-5: 0 72% 51%;
+    --sidebar: 240 15% 7%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 130 100% 71%;
+    --sidebar-primary-foreground: 240 15% 9%;
+    --sidebar-accent: 240 10% 14%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 240 8% 14%;
+    --sidebar-ring: 160 80% 55%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ── Zbooni signature gradient utility ─────────────────────────── */
+.zbooni-gradient-text {
+  background: linear-gradient(135deg, #7BFF6B 0%, #3CC8E0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.zbooni-gradient-bg {
+  background: linear-gradient(135deg, #7BFF6B 0%, #3CC8E0 100%);
+}
+
+.zbooni-gradient-border {
+  border-image: linear-gradient(135deg, #7BFF6B 0%, #3CC8E0 100%) 1;
 }
