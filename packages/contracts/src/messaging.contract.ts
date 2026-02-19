@@ -125,6 +125,9 @@ export const MessageSendResponseSchema = z
     sentAt: z.string().datetime().nullable(),
     deliveredAt: z.string().datetime().nullable(),
     repliedAt: z.string().datetime().nullable(),
+    followUpNumber: z.number().int().nullable(),
+    nextFollowUpAfter: z.string().datetime().nullable(),
+    providerConversationId: z.string().nullable(),
     failureCode: z.string().nullable(),
     failureReason: z.string().nullable(),
     createdAt: z.string().datetime(),
@@ -172,6 +175,32 @@ export const ListMessageSendsResponseSchema = z
     total: z.number().int().min(0),
   })
   .strict();
+
+// ── Conversation thread ──────────────────────────────
+export const ConversationLeadIdParamsSchema = z
+  .object({
+    leadId: z.string().min(1),
+  })
+  .strict();
+
+export const ConversationEntrySchema = z.object({
+  type: z.enum(['sent', 'reply']),
+  timestamp: z.string().datetime(),
+  channel: MessageChannelSchema,
+  bodyText: z.string(),
+  subject: z.string().nullable(),
+  replyClassification: z.string().nullable(),
+  status: MessageSendStatusSchema.nullable(),
+  followUpNumber: z.number().int().nullable(),
+});
+
+export const ConversationResponseSchema = z.object({
+  leadId: z.string(),
+  entries: z.array(ConversationEntrySchema),
+});
+
+export type ConversationEntry = z.infer<typeof ConversationEntrySchema>;
+export type ConversationResponse = z.infer<typeof ConversationResponseSchema>;
 
 export type MessageChannel = z.infer<typeof MessageChannelSchema>;
 export type MessageApprovalStatus = z.infer<typeof MessageApprovalStatusSchema>;

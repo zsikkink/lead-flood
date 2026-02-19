@@ -1,5 +1,7 @@
 import type {
   ApproveMessageDraftRequest,
+  ConversationEntry,
+  ConversationResponse,
   GenerateMessageDraftRequest,
   GenerateMessageDraftResponse,
   ListMessageDraftsQuery,
@@ -8,6 +10,7 @@ import type {
   ListMessageSendsResponse,
   MessageDraftResponse,
   MessageSendResponse,
+  MessageSendStatus,
   MessageVariantResponse,
   RejectMessageDraftRequest,
   SendMessageRequest,
@@ -25,6 +28,7 @@ export interface MessagingRepository {
   sendMessage(input: SendMessageRequest): Promise<MessageSendResponse>;
   listMessageSends(query: ListMessageSendsQuery): Promise<ListMessageSendsResponse>;
   getMessageSend(sendId: string): Promise<MessageSendResponse>;
+  getConversation(leadId: string): Promise<ConversationResponse>;
 }
 
 export class StubMessagingRepository implements MessagingRepository {
@@ -64,6 +68,10 @@ export class StubMessagingRepository implements MessagingRepository {
 
   async getMessageSend(_sendId: string): Promise<MessageSendResponse> {
     throw new MessagingNotImplementedError('TODO: get message send persistence');
+  }
+
+  async getConversation(_leadId: string): Promise<ConversationResponse> {
+    throw new MessagingNotImplementedError('TODO: get conversation persistence');
   }
 }
 
@@ -114,6 +122,9 @@ type PrismaMessageSend = {
   sentAt: Date | null;
   deliveredAt: Date | null;
   repliedAt: Date | null;
+  followUpNumber: number;
+  nextFollowUpAfter: Date | null;
+  providerConversationId: string | null;
   failureCode: string | null;
   failureReason: string | null;
   createdAt: Date;
@@ -175,6 +186,9 @@ function mapSendToResponse(send: PrismaMessageSend): MessageSendResponse {
     sentAt: send.sentAt?.toISOString() ?? null,
     deliveredAt: send.deliveredAt?.toISOString() ?? null,
     repliedAt: send.repliedAt?.toISOString() ?? null,
+    followUpNumber: send.followUpNumber,
+    nextFollowUpAfter: send.nextFollowUpAfter?.toISOString() ?? null,
+    providerConversationId: send.providerConversationId,
     failureCode: send.failureCode,
     failureReason: send.failureReason,
     createdAt: send.createdAt.toISOString(),
@@ -398,5 +412,57 @@ export class PrismaMessagingRepository extends StubMessagingRepository {
       throw new MessagingNotFoundError('Message send not found');
     }
     return mapSendToResponse(send);
+  }
+
+  override async getConversation(leadId: string): Promise<ConversationResponse> {
+    // Sent messages: join MessageSend → MessageVariant (isSelected=true) for body text
+    const sends = await prisma.messageSend.findMany({
+      where: { leadId },
+      include: {
+        messageVariant: {
+          select: { bodyText: true, subject: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Replies: FeedbackEvents where eventType = REPLIED
+    const replies = await prisma.feedbackEvent.findMany({
+      where: { leadId, eventType: 'REPLIED' },
+      orderBy: { occurredAt: 'asc' },
+    });
+
+    const entries: ConversationEntry[] = [];
+
+    for (const send of sends) {
+      entries.push({
+        type: 'sent',
+        timestamp: (send.sentAt ?? send.createdAt).toISOString(),
+        channel: send.channel as 'EMAIL' | 'WHATSAPP',
+        bodyText: send.messageVariant.bodyText,
+        subject: send.messageVariant.subject ?? null,
+        replyClassification: null,
+        status: send.status as MessageSendStatus,
+        followUpNumber: send.followUpNumber,
+      });
+    }
+
+    for (const reply of replies) {
+      entries.push({
+        type: 'reply',
+        timestamp: reply.occurredAt.toISOString(),
+        channel: 'WHATSAPP', // Default — can refine later by looking at the linked MessageSend
+        bodyText: reply.replyText ?? '(no text)',
+        subject: null,
+        replyClassification: reply.replyClassification,
+        status: null,
+        followUpNumber: null,
+      });
+    }
+
+    // Sort chronologically
+    entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    return { leadId, entries };
   }
 }

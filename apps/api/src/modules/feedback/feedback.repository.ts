@@ -40,6 +40,8 @@ function mapFeedbackEventToResponse(event: {
   providerEventId: string | null;
   dedupeKey: string;
   payloadJson: unknown;
+  replyText: string | null;
+  replyClassification: string | null;
   occurredAt: Date;
   createdAt: Date;
 }): FeedbackEventResponse {
@@ -52,6 +54,8 @@ function mapFeedbackEventToResponse(event: {
     providerEventId: event.providerEventId,
     dedupeKey: event.dedupeKey,
     payloadJson: event.payloadJson ?? null,
+    replyText: event.replyText,
+    replyClassification: event.replyClassification,
     occurredAt: event.occurredAt.toISOString(),
     createdAt: event.createdAt.toISOString(),
   };

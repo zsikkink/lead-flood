@@ -14,6 +14,8 @@ import {
   MessageSendResponseSchema,
   RejectMessageDraftRequestSchema,
   SendMessageRequestSchema,
+  ConversationLeadIdParamsSchema,
+  ConversationResponseSchema,
 } from '@lead-flood/contracts';
 
 import { MessagingNotImplementedError } from './messaging.errors.js';
@@ -203,6 +205,23 @@ export function registerMessagingRoutes(
     try {
       const result = await service.getMessageSend(parsedParams.data.sendId);
       return MessageSendResponseSchema.parse(result);
+    } catch (error: unknown) {
+      if (handleModuleError(error, request, reply)) {
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.get('/v1/messaging/conversations/:leadId', async (request, reply) => {
+    const parsedParams = ConversationLeadIdParamsSchema.safeParse(request.params);
+    if (!parsedParams.success) {
+      return sendValidationError(reply, request.id, 'Invalid lead id');
+    }
+
+    try {
+      const result = await service.getConversation(parsedParams.data.leadId);
+      return ConversationResponseSchema.parse(result);
     } catch (error: unknown) {
       if (handleModuleError(error, request, reply)) {
         return;

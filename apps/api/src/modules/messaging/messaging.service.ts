@@ -1,5 +1,6 @@
 import type {
   ApproveMessageDraftRequest,
+  ConversationResponse,
   GenerateMessageDraftRequest,
   GenerateMessageDraftResponse,
   ListMessageDraftsQuery,
@@ -50,6 +51,7 @@ export interface MessagingService {
   sendMessage(input: SendMessageRequest): Promise<MessageSendResponse>;
   listMessageSends(query: ListMessageSendsQuery): Promise<ListMessageSendsResponse>;
   getMessageSend(sendId: string): Promise<MessageSendResponse>;
+  getConversation(leadId: string): Promise<ConversationResponse>;
 }
 
 export function buildMessagingService(
@@ -111,6 +113,9 @@ export function buildMessagingService(
     },
     async getMessageSend(sendId) {
       return repository.getMessageSend(sendId);
+    },
+    async getConversation(leadId) {
+      return repository.getConversation(leadId);
     },
   };
 }

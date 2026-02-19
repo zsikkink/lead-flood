@@ -40,6 +40,8 @@ export const FeedbackEventResponseSchema = z
     providerEventId: z.string().nullable(),
     dedupeKey: z.string(),
     payloadJson: z.unknown().nullable(),
+    replyText: z.string().nullable(),
+    replyClassification: z.string().nullable(),
     occurredAt: z.string().datetime(),
     createdAt: z.string().datetime(),
   })
