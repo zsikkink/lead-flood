@@ -1,4 +1,5 @@
 import type {
+  ConversationResponse,
   CreateDiscoveryRunRequest,
   CreateDiscoveryRunResponse,
   CreateLeadRequest,
@@ -172,6 +173,10 @@ export class ApiClient {
   listSends(query?: ListMessageSendsQuery): Promise<ListMessageSendsResponse> {
     const qs = query ? `?${toSearchParams(query as Record<string, unknown>)}` : '';
     return this.request(`/v1/messaging/sends${qs}`);
+  }
+
+  getConversation(leadId: string): Promise<ConversationResponse> {
+    return this.request(`/v1/messaging/conversations/${leadId}`);
   }
 
   // ── Analytics ─────────────────────────────────────

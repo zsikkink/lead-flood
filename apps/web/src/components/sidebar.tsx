@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   ClipboardList,
+  Inbox,
   LayoutDashboard,
   ListChecks,
   MessageSquare,
@@ -22,6 +23,7 @@ const DASHBOARD_NAV_ITEMS = [
   { href: '/dashboard/discover', label: 'Discover', icon: Rocket },
   { href: '/dashboard/leads', label: 'Leads', icon: Users },
   { href: '/dashboard/messages', label: 'Messages', icon: MessageSquare },
+  { href: '/dashboard/inbox', label: 'Inbox', icon: Inbox },
   { href: '/dashboard/icps', label: 'ICP Profiles', icon: Target },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
 ] as const;

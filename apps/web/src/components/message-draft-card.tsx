@@ -8,6 +8,8 @@ import { useAuth } from '../hooks/use-auth.js';
 
 interface MessageDraftCardProps {
   draft: MessageDraftResponse;
+  leadName?: string | undefined;
+  leadEmail?: string | undefined;
   onAction: () => void;
 }
 
@@ -157,7 +159,7 @@ function VariantEditor({
   );
 }
 
-export function MessageDraftCard({ draft, onAction }: MessageDraftCardProps) {
+export function MessageDraftCard({ draft, leadName, leadEmail, onAction }: MessageDraftCardProps) {
   const { apiClient, user } = useAuth();
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -255,6 +257,7 @@ export function MessageDraftCard({ draft, onAction }: MessageDraftCardProps) {
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground/60">
+            {leadName || leadEmail ? `${leadName ?? ''} ${leadEmail ? `(${leadEmail})` : ''}`.trim() + ' · ' : ''}
             {draft.variants.length} variant{draft.variants.length !== 1 ? 's' : ''}
             {' · '}{draft.generatedByModel}
           </p>

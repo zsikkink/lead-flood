@@ -208,7 +208,7 @@ function buildTimeline(
     events.push({
       icon: Send,
       label: `${send.channel} ${send.status === 'QUEUED' ? 'Queued' : 'Sent'}`,
-      detail: `Via ${send.provider}${send.status === 'FAILED' ? ' — FAILED' : ''}`,
+      detail: `Via ${send.provider}${send.status === 'FAILED' ? ' — FAILED' : ''}${send.followUpNumber && send.followUpNumber > 0 ? ` (follow-up #${send.followUpNumber})` : ''}`,
       time: new Date(send.sentAt ?? send.createdAt).toLocaleString(),
       timestamp: sendTimestamp,
       color:
@@ -222,7 +222,7 @@ function buildTimeline(
       events.push({
         icon: MessageSquare,
         label: 'Reply Received',
-        detail: `Lead responded to ${send.channel} message`,
+        detail: 'View full conversation in Inbox',
         time: new Date(send.repliedAt).toLocaleString(),
         timestamp: repliedTimestamp,
         color: 'text-emerald-400 bg-emerald-500/15',
