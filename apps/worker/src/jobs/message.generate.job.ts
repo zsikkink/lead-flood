@@ -4,6 +4,8 @@ import type { OpenAiAdapter } from '@lead-flood/providers';
 import type PgBoss from 'pg-boss';
 import type { Job, SendOptions } from 'pg-boss';
 
+import { validateMessageVariant, buildStricterPromptSuffix } from '../messaging/validate-message.js';
+import { getFallbackForChannel } from '../messaging/fallback-templates.js';
 import { MESSAGE_SEND_JOB_NAME, MESSAGE_SEND_RETRY_OPTIONS, type MessageSendJobPayload } from './message.send.job.js';
 
 export const MESSAGE_GENERATE_JOB_NAME = 'message.generate';
@@ -144,6 +146,8 @@ export async function handleMessageGenerateJob(
       pitchedFeature = candidates[followUpNumber % candidates.length] ?? candidates[0] ?? null;
     }
 
+    const resolvedChannel = channel ?? 'WHATSAPP';
+
     let generatedByModel = 'stub';
     let variantAContent = { subject: null as string | null, bodyText: 'Message generation pending', bodyHtml: null as string | null, ctaText: null as string | null };
     let variantBContent = { ...variantAContent };
@@ -166,12 +170,12 @@ export async function handleMessageGenerateJob(
         ].filter(Boolean).join(' ');
       }
 
-      const result = systemPromptOverride
-        ? await deps.openAiAdapter.generateMessageVariants({
-            ...groundingContext,
-            icpDescription: systemPromptOverride,
-          })
-        : await deps.openAiAdapter.generateMessageVariants(groundingContext);
+      const generateContext = systemPromptOverride
+        ? { ...groundingContext, icpDescription: systemPromptOverride }
+        : groundingContext;
+
+      // First attempt
+      const result = await deps.openAiAdapter.generateMessageVariants(generateContext);
 
       if (result.status === 'success') {
         generatedByModel = result.data.model;
@@ -183,8 +187,84 @@ export async function handleMessageGenerateJob(
           'OpenAI message generation failed, creating stub draft',
         );
       }
+
+      // Validate both variants
+      const validationA = validateMessageVariant(resolvedChannel, variantAContent);
+      const validationB = validateMessageVariant(resolvedChannel, variantBContent);
+
+      if (validationA.reasons.length > 0 || validationB.reasons.length > 0) {
+        logger.info(
+          { jobId: job.id, leadId, reasonsA: validationA.reasons, reasonsB: validationB.reasons },
+          'Message validation findings',
+        );
+      }
+
+      // If either has a hard rejection, retry once with stricter prompt
+      if (validationA.hardReject || validationB.hardReject) {
+        logger.warn(
+          { jobId: job.id, leadId, hardRejectA: validationA.hardReject, hardRejectB: validationB.hardReject },
+          'Hard rejection detected, retrying with stricter prompt',
+        );
+
+        const stricterSuffix = buildStricterPromptSuffix(resolvedChannel);
+        const retryContext = {
+          ...generateContext,
+          icpDescription: `${generateContext.icpDescription}\n\n${stricterSuffix}`,
+        };
+
+        const retryResult = await deps.openAiAdapter.generateMessageVariants(retryContext);
+
+        if (retryResult.status === 'success') {
+          generatedByModel = retryResult.data.model;
+          const retryA = validateMessageVariant(resolvedChannel, retryResult.data.variant_a);
+          const retryB = validateMessageVariant(resolvedChannel, retryResult.data.variant_b);
+
+          if (!retryA.hardReject) {
+            variantAContent = retryA.cleaned;
+          }
+          if (!retryB.hardReject) {
+            variantBContent = retryB.cleaned;
+          }
+
+          // If still hard rejecting after retry, use fallback
+          if (retryA.hardReject || retryB.hardReject) {
+            logger.warn(
+              { jobId: job.id, leadId },
+              'Retry still has hard rejections, using fallback templates',
+            );
+            const fallback = getFallbackForChannel(
+              resolvedChannel,
+              lead.firstName,
+              companyName,
+            );
+            generatedByModel = 'fallback-template';
+            if (retryA.hardReject) {
+              variantAContent = fallback;
+            }
+            if (retryB.hardReject) {
+              variantBContent = fallback;
+            }
+          }
+        } else {
+          // Retry OpenAI call itself failed — use fallback for both
+          logger.warn({ jobId: job.id, leadId }, 'Retry OpenAI failed, using fallback templates');
+          const fallback = getFallbackForChannel(resolvedChannel, lead.firstName, companyName);
+          generatedByModel = 'fallback-template';
+          variantAContent = fallback;
+          variantBContent = fallback;
+        }
+      } else {
+        // No hard rejections — apply soft cleaning
+        variantAContent = validationA.cleaned;
+        variantBContent = validationB.cleaned;
+      }
     } else {
-      logger.warn({ jobId: job.id, leadId }, 'OpenAI not configured, creating stub draft');
+      // OpenAI not configured — use fallback
+      logger.warn({ jobId: job.id, leadId }, 'OpenAI not configured, using fallback templates');
+      const fallback = getFallbackForChannel(resolvedChannel, lead.firstName, companyName);
+      generatedByModel = 'fallback-template';
+      variantAContent = fallback;
+      variantBContent = fallback;
     }
 
     const draft = await prisma.messageDraft.create({
@@ -204,7 +284,7 @@ export async function handleMessageGenerateJob(
           create: [
             {
               variantKey: 'variant_a',
-              channel: channel ?? 'WHATSAPP',
+              channel: resolvedChannel,
               subject: variantAContent.subject,
               bodyText: variantAContent.bodyText,
               bodyHtml: variantAContent.bodyHtml,
@@ -213,7 +293,7 @@ export async function handleMessageGenerateJob(
             },
             {
               variantKey: 'variant_b',
-              channel: channel ?? 'WHATSAPP',
+              channel: resolvedChannel,
               subject: variantBContent.subject,
               bodyText: variantBContent.bodyText,
               bodyHtml: variantBContent.bodyHtml,
