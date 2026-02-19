@@ -69,8 +69,8 @@ export default function DashboardPage() {
 
   // Derive "today" stats from existing data
   const pendingMessages = drafts.data?.total ?? 0;
-  const newLeadsToday = funnel.data ? Math.min(funnel.data.discoveredCount, 3) : 0;
-  const sentToday = funnel.data ? Math.min(funnel.data.messagesSentCount, 5) : 0;
+  const newLeadsToday = funnel.data?.discoveredCount ?? 0;
+  const sentToday = funnel.data?.messagesSentCount ?? 0;
 
   return (
     <div className="space-y-6">

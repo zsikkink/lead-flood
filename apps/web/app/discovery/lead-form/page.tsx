@@ -35,9 +35,9 @@ export default function DiscoveryLeadFormPage() {
   const apiBaseUrl = useMemo(() => env.NEXT_PUBLIC_API_BASE_URL, [env.NEXT_PUBLIC_API_BASE_URL]);
 
   const [form, setForm] = useState<LeadFormState>({
-    firstName: 'Ada',
-    lastName: 'Lovelace',
-    email: 'ada@example.com',
+    firstName: '',
+    lastName: '',
+    email: '',
     source: 'manual',
   });
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +138,7 @@ export default function DiscoveryLeadFormPage() {
             First name
             <input
               required
-              placeholder="Ada"
+              placeholder="First name"
               value={form.firstName}
               onChange={(event) =>
                 setForm((previous) => ({
@@ -152,7 +152,7 @@ export default function DiscoveryLeadFormPage() {
             Last name
             <input
               required
-              placeholder="Lovelace"
+              placeholder="Last name"
               value={form.lastName}
               onChange={(event) =>
                 setForm((previous) => ({
@@ -167,7 +167,7 @@ export default function DiscoveryLeadFormPage() {
             <input
               required
               type="email"
-              placeholder="ada@example.com"
+              placeholder="name@example.com"
               value={form.email}
               onChange={(event) =>
                 setForm((previous) => ({
@@ -181,7 +181,7 @@ export default function DiscoveryLeadFormPage() {
             Source
             <input
               required
-              placeholder="manual"
+              placeholder="source tag"
               value={form.source}
               onChange={(event) =>
                 setForm((previous) => ({

@@ -172,12 +172,25 @@ async function main(): Promise<void> {
     schema: env.PG_BOSS_SCHEMA,
   });
   let stopJobRequestDispatcher: (() => void) | null = null;
+  const workerSchedulesEnabled =
+    env.WORKER_ENABLE_SCHEDULES ?? env.APP_ENV !== 'local';
+  const discoveryQueueWorkersEnabled =
+    env.DISCOVERY_QUEUE_WORKERS_ENABLED ?? env.APP_ENV !== 'local';
 
   await boss.start();
   logger.info({}, 'Worker started');
 
   await ensureWorkerQueues(boss);
-  await registerWorkerSchedules(boss);
+  if (workerSchedulesEnabled) {
+    await registerWorkerSchedules(boss);
+  } else {
+    logger.info(
+      {
+        workerSchedulesEnabled,
+      },
+      'Worker schedules disabled for this environment',
+    );
+  }
 
   const apolloAdapter = new ApolloDiscoveryAdapter({
     apiKey: env.APOLLO_API_KEY ?? '',
@@ -266,6 +279,7 @@ async function main(): Promise<void> {
           runMaxTasks: env.DISCOVERY_RUN_MAX_TASKS ?? null,
           countries: discoveryRuntimeConfig.countries,
           languages: discoveryRuntimeConfig.languages,
+          discoveryQueueWorkersEnabled,
           jobRequestPollMs: env.JOB_REQUEST_POLL_MS,
           jobRequestMaxPerTick: env.JOB_REQUEST_MAX_PER_TICK,
           jobRequestWorkerId: env.JOB_REQUEST_WORKER_ID ?? buildDefaultWorkerId(),
@@ -348,82 +362,116 @@ async function main(): Promise<void> {
   }, 5000);
 
   await registerWorker<HeartbeatJobPayload>(boss, logger, HEARTBEAT_QUEUE_NAME, handleHeartbeatJob);
-  await registerWorker<DiscoveryRunJobPayload>(boss, logger, DISCOVERY_RUN_JOB_NAME, (jobLogger, job) =>
-    handleDiscoveryRunJob(jobLogger, job, {
-      boss,
-      apolloAdapter,
-      braveSearchAdapter,
-      googlePlacesAdapter,
-      linkedInScrapeAdapter,
-      companySearchAdapter,
-      discoveryEnabled: env.DISCOVERY_ENABLED,
-      apolloEnabled: env.APOLLO_ENABLED,
-      braveSearchEnabled: env.BRAVE_SEARCH_ENABLED,
-      googlePlacesEnabled: env.GOOGLE_PLACES_ENABLED,
-      linkedInScrapeEnabled: env.LINKEDIN_SCRAPE_ENABLED,
-      companySearchEnabled: env.COMPANY_SEARCH_ENABLED,
-      defaultProvider: 'BRAVE_SEARCH',
-      providerOrder: discoveryProviderOrder,
-      defaultEnrichmentProvider: env.ENRICHMENT_DEFAULT_PROVIDER,
-    }),
-  );
+  if (discoveryQueueWorkersEnabled) {
+    await registerWorker<DiscoveryRunJobPayload>(boss, logger, DISCOVERY_RUN_JOB_NAME, (jobLogger, job) =>
+      handleDiscoveryRunJob(jobLogger, job, {
+        boss,
+        apolloAdapter,
+        braveSearchAdapter,
+        googlePlacesAdapter,
+        linkedInScrapeAdapter,
+        companySearchAdapter,
+        discoveryEnabled: env.DISCOVERY_ENABLED,
+        apolloEnabled: env.APOLLO_ENABLED,
+        braveSearchEnabled: env.BRAVE_SEARCH_ENABLED,
+        googlePlacesEnabled: env.GOOGLE_PLACES_ENABLED,
+        linkedInScrapeEnabled: env.LINKEDIN_SCRAPE_ENABLED,
+        companySearchEnabled: env.COMPANY_SEARCH_ENABLED,
+        defaultProvider: 'BRAVE_SEARCH',
+        providerOrder: discoveryProviderOrder,
+        defaultEnrichmentProvider: env.ENRICHMENT_DEFAULT_PROVIDER,
+      }),
+    );
+  } else {
+    logger.info(
+      {
+        discoveryQueueWorkersEnabled,
+      },
+      'Legacy discovery queue consumers disabled for this environment',
+    );
+  }
 
   if (discoveryRuntimeConfig && serpApiProvider) {
-    await registerWorker<DiscoverySeedJobPayload>(
-      boss,
-      logger,
-      DISCOVERY_SEED_JOB_NAME,
-      (jobLogger, job) =>
-        handleDiscoverySeedJob(jobLogger, job, {
-          boss,
-          config: discoveryRuntimeConfig,
-        }),
-    );
+    if (discoveryQueueWorkersEnabled) {
+      await registerWorker<DiscoverySeedJobPayload>(
+        boss,
+        logger,
+        DISCOVERY_SEED_JOB_NAME,
+        (jobLogger, job) =>
+          handleDiscoverySeedJob(jobLogger, job, {
+            boss,
+            config: discoveryRuntimeConfig,
+          }),
+      );
 
-    await registerWorker<DiscoveryRunSearchTaskJobPayload>(
-      boss,
-      logger,
-      DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
-      (jobLogger, job) =>
-        handleDiscoveryRunSearchTaskJob(jobLogger, job, {
-          boss,
-          provider: serpApiProvider,
-          config: discoveryRuntimeConfig,
-          ...(env.DISCOVERY_RUN_MAX_TASKS !== undefined
-            ? { maxTasks: env.DISCOVERY_RUN_MAX_TASKS }
-            : {}),
-        }),
-      {
-        batchSize: discoveryRuntimeConfig.concurrency,
-        pollingIntervalSeconds: 1,
-        concurrent: true,
-      },
-    );
-
-    for (let slot = 0; slot < discoveryRuntimeConfig.concurrency; slot += 1) {
-      await boss.send(
+      await registerWorker<DiscoveryRunSearchTaskJobPayload>(
+        boss,
+        logger,
         DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
+        (jobLogger, job) =>
+          handleDiscoveryRunSearchTaskJob(jobLogger, job, {
+            boss,
+            provider: serpApiProvider,
+            config: discoveryRuntimeConfig,
+            ...(env.DISCOVERY_RUN_MAX_TASKS !== undefined
+              ? { maxTasks: env.DISCOVERY_RUN_MAX_TASKS }
+              : {}),
+          }),
         {
-          slot,
-          reason: 'worker_bootstrap',
-          correlationId: 'bootstrap:discovery.run_search_task',
-        } satisfies DiscoveryRunSearchTaskJobPayload,
-        {
-          ...DISCOVERY_RUN_SEARCH_TASK_RETRY_OPTIONS,
+          batchSize: discoveryRuntimeConfig.concurrency,
+          pollingIntervalSeconds: 1,
+          concurrent: true,
         },
       );
-    }
 
-    await boss.send(
-      DISCOVERY_SEED_JOB_NAME,
-      {
-        reason: 'worker_bootstrap',
-        correlationId: 'bootstrap:discovery.seed',
-      } satisfies DiscoverySeedJobPayload,
-      {
-        ...DISCOVERY_SEED_RETRY_OPTIONS,
-      },
-    );
+      if (env.DISCOVERY_BOOTSTRAP_ON_START) {
+        for (let slot = 0; slot < discoveryRuntimeConfig.concurrency; slot += 1) {
+          await boss.send(
+            DISCOVERY_RUN_SEARCH_TASK_JOB_NAME,
+            {
+              slot,
+              reason: 'worker_bootstrap',
+              correlationId: 'bootstrap:discovery.run_search_task',
+            } satisfies DiscoveryRunSearchTaskJobPayload,
+            {
+              ...DISCOVERY_RUN_SEARCH_TASK_RETRY_OPTIONS,
+            },
+          );
+        }
+
+        await boss.send(
+          DISCOVERY_SEED_JOB_NAME,
+          {
+            reason: 'worker_bootstrap',
+            correlationId: 'bootstrap:discovery.seed',
+          } satisfies DiscoverySeedJobPayload,
+          {
+            ...DISCOVERY_SEED_RETRY_OPTIONS,
+          },
+        );
+
+        logger.info(
+          {
+            discoveryBootstrapOnStart: true,
+          },
+          'Seeded and started discovery loop from worker bootstrap',
+        );
+      } else {
+        logger.info(
+          {
+            discoveryBootstrapOnStart: false,
+          },
+          'Discovery bootstrap on worker start is disabled',
+        );
+      }
+    } else {
+      logger.info(
+        {
+          discoveryQueueWorkersEnabled,
+        },
+        'Search-task queue workers disabled; processing discovery through job requests only',
+      );
+    }
 
     const dispatcher = startJobRequestDispatcher({
       logger,

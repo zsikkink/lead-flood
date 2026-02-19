@@ -15,32 +15,37 @@ const MOBILE_NAV = [
   { href: '/dashboard/messages', label: 'Messages' },
   { href: '/dashboard/icps', label: 'ICP Profiles' },
   { href: '/dashboard/analytics', label: 'Analytics' },
+  { href: '/discovery', label: 'Discovery Leads' },
+  { href: '/discovery/search-tasks', label: 'Search Tasks' },
+  { href: '/discovery/jobs', label: 'Jobs' },
 ] as const;
+
+function getPageTitle(pathname: string): string {
+  if (pathname === '/dashboard') return 'Pipeline Overview';
+  if (pathname === '/dashboard/discover') return 'Discover Leads';
+  if (pathname.startsWith('/dashboard/leads/')) return 'Lead Detail';
+  if (pathname === '/dashboard/leads') return 'Leads';
+  if (pathname === '/dashboard/messages') return 'Message Queue';
+  if (pathname.startsWith('/dashboard/icps/')) return 'ICP Profile';
+  if (pathname === '/dashboard/icps') return 'ICP Profiles';
+  if (pathname === '/dashboard/analytics') return 'Analytics';
+
+  if (pathname === '/discovery') return 'Discovery Leads';
+  if (pathname.startsWith('/discovery/leads/')) return 'Discovery Lead';
+  if (pathname === '/discovery/jobs') return 'Discovery Jobs';
+  if (pathname.startsWith('/discovery/jobs/')) return 'Job Run Detail';
+  if (pathname === '/discovery/search-tasks') return 'Search Tasks';
+  if (pathname.startsWith('/discovery/search-tasks/')) return 'Search Task Detail';
+  if (pathname === '/discovery/lead-form') return 'Lead Intake';
+
+  return 'Dashboard';
+}
 
 export function Header() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // Derive page title from pathname
-  const pageTitle =
-    pathname === '/dashboard'
-      ? 'Pipeline Overview'
-      : pathname === '/dashboard/discover'
-        ? 'Discover Leads'
-        : pathname.startsWith('/dashboard/leads/')
-          ? 'Lead Detail'
-          : pathname === '/dashboard/leads'
-            ? 'Leads'
-            : pathname === '/dashboard/messages'
-              ? 'Message Queue'
-              : pathname.startsWith('/dashboard/icps/')
-                ? 'ICP Profile'
-                : pathname === '/dashboard/icps'
-                  ? 'ICP Profiles'
-                  : pathname === '/dashboard/analytics'
-                    ? 'Analytics'
-                    : 'Dashboard';
+  const pageTitle = getPageTitle(pathname);
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -88,7 +93,9 @@ export function Header() {
         <nav className="border-t border-border/50 p-3 lg:hidden">
           {MOBILE_NAV.map(({ href, label }) => {
             const isActive =
-              href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
+              pathname === href ||
+              ((href !== '/dashboard' && href !== '/discovery') &&
+                pathname.startsWith(`${href}/`));
             return (
               <Link
                 key={href}

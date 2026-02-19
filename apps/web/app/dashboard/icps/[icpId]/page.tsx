@@ -176,23 +176,6 @@ function extractMeta(metadataJson: Record<string, unknown> | null | undefined): 
   };
 }
 
-// Fake performance stats for demo
-function generatePerformanceStats(name: string) {
-  // Deterministic fake stats based on name hash
-  const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return {
-    leadsDiscovered: 40 + (hash % 80),
-    leadsQualified: 25 + (hash % 40),
-    messagesSent: 15 + (hash % 30),
-    replies: 3 + (hash % 12),
-    conversionRate: (8 + (hash % 20)) / 100,
-    replyRate: (12 + (hash % 25)) / 100,
-    avgScore: 0.55 + (hash % 35) / 100,
-    bestFeature: ['WhatsApp Payment Links', 'Catalog (CShop)', 'Multi-MID Retry', 'Milestone Payments', 'Promo Codes'][hash % 5]!,
-    topChannel: hash % 3 === 0 ? 'WhatsApp' : 'Email',
-  };
-}
-
 export default function IcpDetailPage() {
   const { icpId } = useParams<{ icpId: string }>();
   const { apiClient } = useAuth();
@@ -201,6 +184,18 @@ export default function IcpDetailPage() {
 
   const icp = useApiQuery(
     useCallback(() => apiClient.getIcp(icpId), [apiClient, icpId]),
+    [icpId],
+  );
+  const icpFunnel = useApiQuery(
+    useCallback(() => apiClient.getFunnel({ icpProfileId: icpId }), [apiClient, icpId]),
+    [icpId],
+  );
+  const icpFeedback = useApiQuery(
+    useCallback(() => apiClient.getFeedbackSummary({ icpProfileId: icpId }), [apiClient, icpId]),
+    [icpId],
+  );
+  const icpScoreDistribution = useApiQuery(
+    useCallback(() => apiClient.getScoreDistribution({ icpProfileId: icpId }), [apiClient, icpId]),
     [icpId],
   );
 
@@ -231,7 +226,24 @@ export default function IcpDetailPage() {
 
   const profile = icp.data;
   const meta = extractMeta(profile.metadataJson);
-  const stats = generatePerformanceStats(profile.name);
+  const leadsDiscovered = icpFunnel.data?.discoveredCount ?? 0;
+  const leadsQualified = icpFunnel.data?.qualifiedCount ?? 0;
+  const messagesSent = icpFunnel.data?.messagesSentCount ?? 0;
+  const replies = icpFeedback.data?.repliedCount ?? 0;
+  const conversionRate = leadsDiscovered > 0 ? leadsQualified / leadsDiscovered : 0;
+  const replyRate = messagesSent > 0 ? replies / messagesSent : 0;
+  const scoreBands = icpScoreDistribution.data?.bands ?? [];
+  const scoreTotal = scoreBands.reduce((sum, band) => sum + band.count, 0);
+  const scoreWeighted = scoreBands.reduce((sum, band) => {
+    if (band.scoreBand === 'LOW') {
+      return sum + band.count * 0.2;
+    }
+    if (band.scoreBand === 'MEDIUM') {
+      return sum + band.count * 0.55;
+    }
+    return sum + band.count * 0.85;
+  }, 0);
+  const avgScore = scoreTotal > 0 ? scoreWeighted / scoreTotal : 0;
 
   return (
     <div className="space-y-6">
@@ -391,23 +403,23 @@ export default function IcpDetailPage() {
       <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
         <h2 className="mb-4 text-base font-bold tracking-tight flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-zbooni-green" />
-          Performance Stats
+          Performance Stats (Live)
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-border/30 bg-zbooni-dark/40 p-4 text-center">
-            <p className="text-2xl font-extrabold tracking-tight">{stats.leadsDiscovered}</p>
+            <p className="text-2xl font-extrabold tracking-tight">{leadsDiscovered}</p>
             <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Discovered</p>
           </div>
           <div className="rounded-xl border border-border/30 bg-zbooni-dark/40 p-4 text-center">
-            <p className="text-2xl font-extrabold tracking-tight">{stats.leadsQualified}</p>
+            <p className="text-2xl font-extrabold tracking-tight">{leadsQualified}</p>
             <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Qualified</p>
           </div>
           <div className="rounded-xl border border-border/30 bg-zbooni-dark/40 p-4 text-center">
-            <p className="text-2xl font-extrabold tracking-tight">{stats.messagesSent}</p>
+            <p className="text-2xl font-extrabold tracking-tight">{messagesSent}</p>
             <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Messaged</p>
           </div>
           <div className="rounded-xl border border-border/30 bg-zbooni-dark/40 p-4 text-center">
-            <p className="text-2xl font-extrabold tracking-tight text-zbooni-green">{stats.replies}</p>
+            <p className="text-2xl font-extrabold tracking-tight text-zbooni-green">{replies}</p>
             <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Replies</p>
           </div>
         </div>
@@ -416,36 +428,36 @@ export default function IcpDetailPage() {
           <div className="flex items-center gap-2 rounded-lg border border-border/20 bg-zbooni-dark/30 p-3">
             <TrendingUp className="h-4 w-4 text-zbooni-green" />
             <div>
-              <p className="text-sm font-bold">{Math.round(stats.conversionRate * 100)}%</p>
+              <p className="text-sm font-bold">{Math.round(conversionRate * 100)}%</p>
               <p className="text-[10px] text-muted-foreground/50">Conversion</p>
             </div>
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-border/20 bg-zbooni-dark/30 p-3">
             <MessageSquare className="h-4 w-4 text-zbooni-teal" />
             <div>
-              <p className="text-sm font-bold">{Math.round(stats.replyRate * 100)}%</p>
+              <p className="text-sm font-bold">{Math.round(replyRate * 100)}%</p>
               <p className="text-[10px] text-muted-foreground/50">Reply Rate</p>
             </div>
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-border/20 bg-zbooni-dark/30 p-3">
             <Target className="h-4 w-4 text-yellow-400" />
             <div>
-              <p className="text-sm font-bold">{Math.round(stats.avgScore * 100)}</p>
+              <p className="text-sm font-bold">{Math.round(avgScore * 100)}</p>
               <p className="text-[10px] text-muted-foreground/50">Avg Score</p>
             </div>
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-border/20 bg-zbooni-dark/30 p-3">
             <Star className="h-4 w-4 text-amber-400" />
             <div>
-              <p className="text-sm font-bold truncate">{stats.bestFeature}</p>
-              <p className="text-[10px] text-muted-foreground/50">Best Feature</p>
+              <p className="text-sm font-bold truncate">{icpFunnel.data?.meetingsCount ?? 0}</p>
+              <p className="text-[10px] text-muted-foreground/50">Meetings</p>
             </div>
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-border/20 bg-zbooni-dark/30 p-3">
             <Zap className="h-4 w-4 text-emerald-400" />
             <div>
-              <p className="text-sm font-bold">{stats.topChannel}</p>
-              <p className="text-[10px] text-muted-foreground/50">Top Channel</p>
+              <p className="text-sm font-bold">{icpFunnel.data?.dealsWonCount ?? 0}</p>
+              <p className="text-[10px] text-muted-foreground/50">Deals Won</p>
             </div>
           </div>
         </div>

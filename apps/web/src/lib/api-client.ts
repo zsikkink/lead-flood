@@ -52,6 +52,7 @@ export class ApiClient {
   constructor(
     private readonly baseUrl: string,
     private readonly getToken: () => string | null,
+    private readonly requestTimeoutMs = 10000,
   ) {}
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -61,10 +62,24 @@ export class ApiClient {
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     };
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...options,
-      headers: { ...headers, ...(options?.headers as Record<string, string> | undefined) },
-    });
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: { ...headers, ...(options?.headers as Record<string, string> | undefined) },
+      });
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new ApiError(504, `API request timed out after ${this.requestTimeoutMs}ms`);
+      }
+      throw new ApiError(503, 'Unable to reach API. Check NEXT_PUBLIC_API_BASE_URL and API health.');
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
 
     if (response.status === 401) {
       throw new ApiError(401, 'Session expired — please log in again');

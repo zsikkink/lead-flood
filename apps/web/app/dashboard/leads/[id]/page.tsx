@@ -17,14 +17,12 @@ import {
   Phone,
   Search,
   Send,
-  Star,
   User,
   Users,
   Briefcase,
   AlertCircle,
   TrendingUp,
   X,
-  Zap,
 } from 'lucide-react';
 import type { GetLeadResponse, MessageSendResponse } from '@lead-flood/contracts';
 import { useParams, useRouter } from 'next/navigation';
@@ -172,80 +170,67 @@ interface TimelineEvent {
   label: string;
   detail: string;
   time: string;
+  timestamp: number;
   color: string;
 }
 
 function buildTimeline(
   lead: GetLeadResponse,
   sends: MessageSendResponse[],
-  scoreInfo: ScoreInfo | null,
+  _scoreInfo: ScoreInfo | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
+  const createdTimestamp = new Date(lead.createdAt).getTime();
   events.push({
     icon: Search,
-    label: 'Lead Discovered',
-    detail: `Via ${lead.source.replace(/_/g, ' ')}`,
-    time: new Date(lead.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    label: 'Lead Created',
+    detail: `Source: ${lead.source.replace(/_/g, ' ')}`,
+    time: new Date(lead.createdAt).toLocaleString(),
+    timestamp: createdTimestamp,
     color: 'text-blue-400 bg-blue-500/15',
   });
 
-  if (lead.enrichmentData) {
+  if (lead.error) {
+    const errorAt = new Date(lead.updatedAt).getTime();
     events.push({
-      icon: Zap,
-      label: 'Enrichment Complete',
-      detail: 'Profile data populated',
-      time: new Date(new Date(lead.createdAt).getTime() + 300000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      color: 'text-purple-400 bg-purple-500/15',
-    });
-  }
-
-  if (scoreInfo?.blendedScore !== undefined) {
-    events.push({
-      icon: Star,
-      label: 'Score Computed',
-      detail: `${Math.round(scoreInfo.blendedScore * 100)}% — ${scoreInfo.scoreBand ?? 'N/A'}`,
-      time: new Date(new Date(lead.createdAt).getTime() + 600000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      color: scoreInfo.scoreBand === 'HIGH' ? 'text-zbooni-green bg-zbooni-green/15'
-        : scoreInfo.scoreBand === 'MEDIUM' ? 'text-yellow-400 bg-yellow-500/15'
-        : 'text-red-400 bg-red-500/15',
-    });
-  }
-
-  if (lead.status === 'messaged' || lead.status === 'replied') {
-    events.push({
-      icon: MessageSquare,
-      label: 'Message Generated',
-      detail: 'AI draft created for review',
-      time: new Date(new Date(lead.createdAt).getTime() + 900000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      color: 'text-zbooni-teal bg-zbooni-teal/15',
+      icon: AlertCircle,
+      label: 'Lead Error',
+      detail: lead.error,
+      time: new Date(lead.updatedAt).toLocaleString(),
+      timestamp: errorAt,
+      color: 'text-red-400 bg-red-500/15',
     });
   }
 
   for (const send of sends) {
+    const sendTimestamp = new Date(send.sentAt ?? send.createdAt).getTime();
     events.push({
       icon: Send,
-      label: `${send.channel} Sent`,
+      label: `${send.channel} ${send.status === 'QUEUED' ? 'Queued' : 'Sent'}`,
       detail: `Via ${send.provider}${send.status === 'FAILED' ? ' — FAILED' : ''}`,
-      time: send.sentAt
-        ? new Date(send.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-        : 'Queued',
-      color: send.status === 'FAILED' || send.status === 'BOUNCED' ? 'text-red-400 bg-red-500/15'
-        : 'text-zbooni-green bg-zbooni-green/15',
+      time: new Date(send.sentAt ?? send.createdAt).toLocaleString(),
+      timestamp: sendTimestamp,
+      color:
+        send.status === 'FAILED' || send.status === 'BOUNCED'
+          ? 'text-red-400 bg-red-500/15'
+          : 'text-zbooni-green bg-zbooni-green/15',
     });
 
     if (send.status === 'REPLIED' && send.repliedAt) {
+      const repliedTimestamp = new Date(send.repliedAt).getTime();
       events.push({
         icon: MessageSquare,
         label: 'Reply Received',
         detail: `Lead responded to ${send.channel} message`,
-        time: new Date(send.repliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        time: new Date(send.repliedAt).toLocaleString(),
+        timestamp: repliedTimestamp,
         color: 'text-emerald-400 bg-emerald-500/15',
       });
     }
   }
 
-  return events;
+  return events.sort((a, b) => b.timestamp - a.timestamp);
 }
 
 function ActivityTimeline({
@@ -270,7 +255,7 @@ function ActivityTimeline({
         {events.map((event, i) => {
           const Icon = event.icon;
           return (
-            <div key={i} className="relative flex items-start gap-4 pl-2">
+            <div key={`${event.label}:${event.timestamp}:${i}`} className="relative flex items-start gap-4 pl-2">
               <div className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${event.color}`}>
                 <Icon className="h-3.5 w-3.5" />
               </div>

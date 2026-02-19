@@ -137,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const apiClient = useMemo(() => {
     const env = getWebEnv();
-    return new ApiClient(env.NEXT_PUBLIC_API_BASE_URL, () => token);
+    return new ApiClient(env.NEXT_PUBLIC_API_BASE_URL, () => token, env.NEXT_PUBLIC_API_TIMEOUT_MS);
   }, [token]);
 
   const login = useCallback(

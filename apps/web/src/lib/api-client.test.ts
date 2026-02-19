@@ -84,4 +84,12 @@ describe('ApiClient', () => {
     expect(calledUrl).toContain('pageSize=10');
     expect(calledUrl).toContain('status=enriched');
   });
+
+  it('throws helpful error when API is unreachable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    await expect(
+      client.listLeads({ page: 1, pageSize: 20, includeQualityMetrics: false }),
+    ).rejects.toThrow('Unable to reach API');
+  });
 });

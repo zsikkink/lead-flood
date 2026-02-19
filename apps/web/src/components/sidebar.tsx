@@ -5,22 +5,31 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
+  ClipboardList,
   LayoutDashboard,
+  ListChecks,
   MessageSquare,
   Rocket,
+  Search,
   Target,
   Users,
 } from 'lucide-react';
 
 import { cn } from '../lib/utils.js';
 
-const NAV_ITEMS = [
+const DASHBOARD_NAV_ITEMS = [
   { href: '/dashboard', label: 'Pipeline', icon: LayoutDashboard },
   { href: '/dashboard/discover', label: 'Discover', icon: Rocket },
   { href: '/dashboard/leads', label: 'Leads', icon: Users },
   { href: '/dashboard/messages', label: 'Messages', icon: MessageSquare },
   { href: '/dashboard/icps', label: 'ICP Profiles', icon: Target },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
+] as const;
+
+const DISCOVERY_NAV_ITEMS = [
+  { href: '/discovery', label: 'Discovery Leads', icon: Search },
+  { href: '/discovery/search-tasks', label: 'Search Tasks', icon: ListChecks },
+  { href: '/discovery/jobs', label: 'Jobs', icon: ClipboardList },
 ] as const;
 
 export function Sidebar() {
@@ -49,15 +58,15 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex flex-1 flex-col gap-1 p-3">
+      <nav className="flex flex-1 flex-col gap-2 p-3">
         <p className="mb-1 px-3 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-          Navigation
+          Dashboard
         </p>
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {DASHBOARD_NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive =
             href === '/dashboard'
               ? pathname === '/dashboard'
-              : pathname.startsWith(href);
+              : pathname === href || pathname.startsWith(`${href}/`);
 
           return (
             <Link
@@ -83,17 +92,46 @@ export function Sidebar() {
             </Link>
           );
         })}
+        <p className="mb-1 mt-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+          Discovery Console
+        </p>
+        {DISCOVERY_NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          const isActive =
+            href === '/discovery'
+              ? pathname === '/discovery'
+              : pathname === href || pathname.startsWith(`${href}/`);
+
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all',
+                isActive
+                  ? 'bg-sidebar-accent text-sidebar-foreground'
+                  : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+              )}
+            >
+              <Icon
+                className={cn(
+                  'h-[18px] w-[18px] transition-colors',
+                  isActive ? 'text-zbooni-teal' : 'text-muted-foreground group-hover:text-sidebar-foreground',
+                )}
+              />
+              {label}
+              {isActive ? (
+                <div className="ml-auto h-1.5 w-1.5 rounded-full bg-zbooni-teal" aria-hidden="true" />
+              ) : null}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Footer */}
       <div className="border-t border-sidebar-border p-4">
         <div className="rounded-xl bg-sidebar-accent/50 p-3">
-          <p className="text-[11px] font-medium text-muted-foreground">Pipeline Status</p>
-          <p className="mt-0.5 text-xs font-semibold text-sidebar-foreground">All systems running</p>
-          <div className="mt-2 flex items-center gap-1.5">
-            <div className="h-1.5 w-1.5 rounded-full bg-zbooni-green animate-pulse" aria-hidden="true" />
-            <span className="text-[10px] text-muted-foreground">Live</span>
-          </div>
+          <p className="text-[11px] font-medium text-muted-foreground">Workflow</p>
+          <p className="mt-0.5 text-xs font-semibold text-sidebar-foreground">Use Discovery Jobs to populate data</p>
         </div>
       </div>
     </aside>

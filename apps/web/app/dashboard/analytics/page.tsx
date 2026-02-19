@@ -1,21 +1,11 @@
 'use client';
 
-import {
-  BarChart3,
-  Brain,
-  Lightbulb,
-  MessageSquare,
-  Target,
-  TrendingUp,
-  Users,
-  Zap,
-} from 'lucide-react';
+import { BarChart3, Brain, MessageSquare, TrendingUp, Users } from 'lucide-react';
 import { useCallback } from 'react';
 
 import { useApiQuery } from '../../../src/hooks/use-api-query.js';
 import { useAuth } from '../../../src/hooks/use-auth.js';
 
-// ── Stat card ──────────────────────────────────────────────────
 function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string | undefined; accent: string }) {
   return (
     <div className="rounded-xl border border-border/30 bg-zbooni-dark/40 p-4">
@@ -25,38 +15,6 @@ function StatCard({ label, value, sub, accent }: { label: string; value: string;
     </div>
   );
 }
-
-// ── Fake ICP performance data for demo ─────────────────────────
-const ICP_PERFORMANCE = [
-  { name: 'Luxury & High-Ticket', messaged: 2, replied: 1, meetings: 1, replyRate: 50, bestFeature: 'Multi-MID Retry', channel: 'WhatsApp' },
-  { name: 'Gifting & Corporate', messaged: 2, replied: 0, meetings: 0, replyRate: 0, bestFeature: 'Catalog (CShop)', channel: 'Email' },
-  { name: 'Events & Weddings', messaged: 2, replied: 1, meetings: 0, replyRate: 50, bestFeature: 'Ticketing Solution', channel: 'WhatsApp' },
-  { name: 'Home & Design', messaged: 1, replied: 0, meetings: 0, replyRate: 0, bestFeature: 'Milestone Payments', channel: 'Email' },
-  { name: 'Boutique Hospitality', messaged: 1, replied: 0, meetings: 0, replyRate: 0, bestFeature: 'International Cards', channel: 'WhatsApp' },
-  { name: 'Premium Wellness', messaged: 0, replied: 0, meetings: 0, replyRate: 0, bestFeature: 'Package Payments', channel: 'Email' },
-  { name: 'Coaching & Advisory', messaged: 1, replied: 1, meetings: 0, replyRate: 100, bestFeature: 'Staged Payments', channel: 'WhatsApp' },
-  { name: 'Education & Training', messaged: 0, replied: 0, meetings: 0, replyRate: 0, bestFeature: 'Promo Codes', channel: 'Email' },
-];
-
-// ── Feature effectiveness data ─────────────────────────────────
-const FEATURE_EFFECTIVENESS = [
-  { feature: 'WhatsApp Payment Links', pitched: 5, replies: 2, rate: 40 },
-  { feature: 'Multi-MID Retry', pitched: 3, replies: 2, rate: 67 },
-  { feature: 'Catalog (CShop)', pitched: 4, replies: 1, rate: 25 },
-  { feature: 'Milestone Payments', pitched: 2, replies: 1, rate: 50 },
-  { feature: 'Promo Codes', pitched: 3, replies: 0, rate: 0 },
-  { feature: 'International Cards', pitched: 2, replies: 1, rate: 50 },
-];
-
-// ── Agent learning log entries ─────────────────────────────────
-const AGENT_INSIGHTS = [
-  { type: 'pattern' as const, text: 'WhatsApp outreach gets 2.3x higher reply rate than email for P1 segments', confidence: 'HIGH', date: '2 days ago' },
-  { type: 'recommendation' as const, text: 'Shift Events & Weddings to WhatsApp-first — email reply rate is 0% for this segment', confidence: 'MEDIUM', date: '1 day ago' },
-  { type: 'pattern' as const, text: 'Leads mentioning "bank transfers" in enrichment data convert 40% higher — they have active payment pain', confidence: 'HIGH', date: '1 day ago' },
-  { type: 'recommendation' as const, text: 'Lead Multi-MID Retry as the opening feature for high-ticket segments (AED 5K+) — highest reply correlation', confidence: 'HIGH', date: '12 hours ago' },
-  { type: 'observation' as const, text: 'Coaching & Advisory segment shows 100% reply rate but sample size is only 1 — need more data before adjusting scoring weights', confidence: 'LOW', date: '6 hours ago' },
-  { type: 'recommendation' as const, text: 'Deprioritize Promo Codes as lead feature in initial outreach — 0% reply rate across 3 pitches', confidence: 'MEDIUM', date: '3 hours ago' },
-];
 
 export default function AnalyticsPage() {
   const { apiClient } = useAuth();
@@ -73,175 +31,98 @@ export default function AnalyticsPage() {
     useCallback(() => apiClient.getRetrainStatus(), [apiClient]),
   );
 
+  const scoreDistribution = useApiQuery(
+    useCallback(() => apiClient.getScoreDistribution(), [apiClient]),
+  );
+
+  const modelMetrics = useApiQuery(
+    useCallback(() => apiClient.getModelMetrics(), [apiClient]),
+  );
+
   const totalMessaged = funnel.data?.messagesSentCount ?? 0;
   const totalReplied = funnel.data?.repliesCount ?? 0;
   const overallReplyRate = totalMessaged > 0 ? Math.round((totalReplied / totalMessaged) * 100) : 0;
   const totalMeetings = funnel.data?.meetingsCount ?? 0;
   const meetingRate = totalReplied > 0 ? Math.round((totalMeetings / totalReplied) * 100) : 0;
 
+  const distributionMax = Math.max(...(scoreDistribution.data?.bands.map((band) => band.count) ?? [0]), 1);
+  const metricsItems = [...(modelMetrics.data?.items ?? [])]
+    .sort((a, b) => new Date(b.evaluatedAt).getTime() - new Date(a.evaluatedAt).getTime())
+    .slice(0, 6);
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">Agent Analytics</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          What the self-improving agent is learning from outreach performance
+          Live analytics from your current database state
         </p>
       </div>
 
-      {/* Top-level outreach metrics */}
+      {funnel.error || feedback.error || retrainStatus.error || scoreDistribution.error || modelMetrics.error ? (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {funnel.error ?? feedback.error ?? retrainStatus.error ?? scoreDistribution.error ?? modelMetrics.error}
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Total Messaged" value={String(totalMessaged)} accent="text-foreground" />
         <StatCard label="Total Replies" value={String(totalReplied)} accent="text-zbooni-green" />
-        <StatCard label="Reply Rate" value={`${overallReplyRate}%`} sub="agent target: 15%" accent="text-zbooni-teal" />
+        <StatCard label="Reply Rate" value={`${overallReplyRate}%`} accent="text-zbooni-teal" />
         <StatCard label="Meeting Rate" value={`${meetingRate}%`} sub="of replies → meetings" accent="text-purple-400" />
       </div>
 
-      {/* ICP Segment Performance */}
-      <div className="rounded-2xl border border-border/50 bg-card shadow-sm">
-        <div className="flex items-center gap-2 p-6 pb-4">
+      <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
+        <div className="mb-4 flex items-center gap-2">
           <Users className="h-4 w-4 text-zbooni-teal" />
-          <h2 className="text-base font-bold tracking-tight">Performance by ICP Segment</h2>
+          <h2 className="text-base font-bold tracking-tight">Funnel Stages</h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/50 text-left">
-                <th className="px-6 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Segment</th>
-                <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Messaged</th>
-                <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Replied</th>
-                <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Meetings</th>
-                <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Reply Rate</th>
-                <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Best Feature</th>
-                <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Top Channel</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ICP_PERFORMANCE.map((icp) => (
-                <tr key={icp.name} className="border-b border-border/30 last:border-0">
-                  <td className="px-6 py-3 font-medium">{icp.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{icp.messaged}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{icp.replied}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{icp.meetings}</td>
-                  <td className="px-4 py-3">
-                    <span className={`font-semibold ${
-                      icp.replyRate >= 50 ? 'text-zbooni-green'
-                        : icp.replyRate > 0 ? 'text-yellow-400'
-                        : 'text-muted-foreground/40'
-                    }`}>
-                      {icp.messaged > 0 ? `${icp.replyRate}%` : '—'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-zbooni-teal/10 px-2 py-0.5 text-[11px] font-semibold text-zbooni-teal">
-                      {icp.bestFeature}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                      icp.channel === 'WhatsApp' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/15 text-blue-400'
-                    }`}>
-                      {icp.channel}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {funnel.data ? (
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+            <StatCard label="Discovered" value={String(funnel.data.discoveredCount)} accent="text-foreground" />
+            <StatCard label="Qualified" value={String(funnel.data.qualifiedCount)} accent="text-zbooni-teal" />
+            <StatCard label="Enriched" value={String(funnel.data.enrichedCount)} accent="text-zbooni-green" />
+            <StatCard label="Scored" value={String(funnel.data.scoredCount)} accent="text-yellow-400" />
+            <StatCard label="Deals Won" value={String(funnel.data.dealsWonCount)} accent="text-purple-400" />
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground/60">Loading funnel metrics...</p>
+        )}
       </div>
 
-      {/* Feature Effectiveness */}
       <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
         <div className="mb-4 flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-zbooni-green" />
-          <h2 className="text-base font-bold tracking-tight">Feature Effectiveness</h2>
+          <h2 className="text-base font-bold tracking-tight">Score Distribution</h2>
         </div>
-        <p className="mb-4 text-xs text-muted-foreground/60">
-          Which Zbooni features resonate most when pitched in outreach
-        </p>
-        <div className="space-y-3">
-          {FEATURE_EFFECTIVENESS.sort((a, b) => b.rate - a.rate).map((f) => (
-            <div key={f.feature} className="flex items-center gap-4">
-              <p className="w-44 shrink-0 text-sm font-medium">{f.feature}</p>
-              <div className="flex flex-1 items-center gap-2">
-                <div className="flex-1">
-                  <div className="h-6 overflow-hidden rounded-full bg-zbooni-dark/60">
+        {scoreDistribution.data && scoreDistribution.data.bands.length > 0 ? (
+          <div className="space-y-3">
+            {scoreDistribution.data.bands.map((band) => {
+              const pct = Math.round((band.count / distributionMax) * 100);
+              return (
+                <div key={band.scoreBand} className="flex items-center gap-3">
+                  <p className="w-16 text-xs font-semibold text-muted-foreground">{band.scoreBand}</p>
+                  <div className="h-6 flex-1 overflow-hidden rounded-full bg-zbooni-dark/60">
                     <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.max(f.rate, 4)}%`,
-                        background: f.rate >= 50
-                          ? 'linear-gradient(90deg, #7BFF6B, #3CC8E0)'
-                          : f.rate > 0
-                            ? 'linear-gradient(90deg, #eab308, #f59e0b)'
-                            : 'hsl(240 8% 25%)',
-                      }}
+                      className="h-full rounded-full bg-zbooni-teal/70"
+                      style={{ width: `${Math.max(pct, band.count > 0 ? 5 : 0)}%` }}
                     />
                   </div>
+                  <p className="w-12 text-right text-sm font-bold">{band.count}</p>
                 </div>
-                <span className="w-10 shrink-0 text-sm font-bold text-foreground">
-                  {f.rate}%
-                </span>
-              </div>
-              <p className="w-20 shrink-0 text-right text-xs text-muted-foreground/50">
-                {f.replies}/{f.pitched} replies
-              </p>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground/60">No score distribution rows yet.</p>
+        )}
       </div>
 
-      {/* Agent Learning Log */}
-      <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <Brain className="h-4 w-4 text-purple-400" />
-          <h2 className="text-base font-bold tracking-tight">Agent Learning Log</h2>
-        </div>
-        <p className="mb-4 text-xs text-muted-foreground/60">
-          Patterns, observations, and recommendations identified by the self-improving agent
-        </p>
-        <div className="space-y-3">
-          {AGENT_INSIGHTS.map((insight, i) => {
-            const typeConfig = {
-              pattern: { icon: TrendingUp, label: 'Pattern', color: 'text-zbooni-green bg-zbooni-green/15' },
-              recommendation: { icon: Lightbulb, label: 'Recommendation', color: 'text-yellow-400 bg-yellow-500/15' },
-              observation: { icon: Target, label: 'Observation', color: 'text-zbooni-teal bg-zbooni-teal/15' },
-            }[insight.type];
-            const Icon = typeConfig.icon;
-
-            return (
-              <div key={i} className="flex items-start gap-3 rounded-lg border border-border/20 bg-zbooni-dark/30 px-4 py-3">
-                <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${typeConfig.color}`}>
-                  <Icon className="h-3 w-3" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${typeConfig.color}`}>
-                      {typeConfig.label}
-                    </span>
-                    <span className={`text-[10px] font-semibold ${
-                      insight.confidence === 'HIGH' ? 'text-zbooni-green'
-                        : insight.confidence === 'MEDIUM' ? 'text-yellow-400'
-                        : 'text-muted-foreground/50'
-                    }`}>
-                      {insight.confidence} confidence
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/40">{insight.date}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{insight.text}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Agent Status */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-zbooni-teal" />
-            <h2 className="text-sm font-bold tracking-tight">Scoring Model</h2>
+            <Brain className="h-4 w-4 text-purple-400" />
+            <h2 className="text-sm font-bold tracking-tight">Scoring Model Status</h2>
           </div>
           {retrainStatus.data ? (
             <div className="space-y-3 text-sm">
@@ -249,21 +130,21 @@ export default function AnalyticsPage() {
                 <span className="text-muted-foreground/60">Active model</span>
                 <span className="font-mono text-xs">
                   {retrainStatus.data.activeModelVersionId
-                    ? retrainStatus.data.activeModelVersionId.slice(0, 12) + '...'
+                    ? `${retrainStatus.data.activeModelVersionId.slice(0, 12)}...`
                     : 'Deterministic only'}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground/60">Status</span>
+                <span className="text-muted-foreground/60">Current run</span>
                 <span className="font-medium">
                   {retrainStatus.data.currentRun ? retrainStatus.data.currentRun.status : 'Idle'}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground/60">Last trained</span>
+                <span className="text-muted-foreground/60">Last successful run</span>
                 <span>
                   {retrainStatus.data.lastSuccessfulRun
-                    ? new Date(retrainStatus.data.lastSuccessfulRun.endedAt).toLocaleDateString()
+                    ? new Date(retrainStatus.data.lastSuccessfulRun.endedAt).toLocaleString()
                     : 'Not yet'}
                 </span>
               </div>
@@ -271,65 +152,101 @@ export default function AnalyticsPage() {
                 <span className="text-muted-foreground/60">Next scheduled</span>
                 <span>
                   {retrainStatus.data.nextScheduledAt
-                    ? new Date(retrainStatus.data.nextScheduledAt).toLocaleDateString()
-                    : 'After 50+ labels'}
+                    ? new Date(retrainStatus.data.nextScheduledAt).toLocaleString()
+                    : 'Not scheduled'}
                 </span>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground/50">Loading...</p>
+            <p className="text-sm text-muted-foreground/60">Loading model status...</p>
           )}
         </div>
 
         <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-zbooni-green" />
-            <h2 className="text-sm font-bold tracking-tight">Channel Split</h2>
+            <h2 className="text-sm font-bold tracking-tight">Feedback Signals</h2>
           </div>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground/60">WhatsApp outreach</span>
-              <span className="font-semibold text-emerald-400">60%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground/60">Email outreach</span>
-              <span className="font-semibold text-blue-400">40%</span>
-            </div>
-            <div className="mt-2 h-3 overflow-hidden rounded-full bg-zbooni-dark/60">
-              <div className="flex h-full">
-                <div className="h-full rounded-l-full bg-emerald-500/60" style={{ width: '60%' }} />
-                <div className="h-full rounded-r-full bg-blue-500/60" style={{ width: '40%' }} />
+          {feedback.data ? (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-[11px] text-muted-foreground/60">Replied</p>
+                <p className="text-lg font-bold text-zbooni-green">{feedback.data.repliedCount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground/60">Meetings</p>
+                <p className="text-lg font-bold text-zbooni-teal">{feedback.data.meetingBookedCount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground/60">Deals Won</p>
+                <p className="text-lg font-bold text-purple-400">{feedback.data.dealWonCount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground/60">Deals Lost</p>
+                <p className="text-lg font-bold text-red-400">{feedback.data.dealLostCount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground/60">Unsubscribed</p>
+                <p className="text-lg font-bold text-yellow-400">{feedback.data.unsubscribedCount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground/60">Bounced</p>
+                <p className="text-lg font-bold text-muted-foreground">{feedback.data.bouncedCount}</p>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground/40">
-              Agent recommendation: increase WhatsApp share to 70% based on reply rate data
-            </p>
-          </div>
+          ) : (
+            <p className="text-sm text-muted-foreground/60">Loading feedback summary...</p>
+          )}
         </div>
       </div>
 
-      {/* Feedback summary */}
-      {feedback.data ? (
-        <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
-          <h2 className="mb-4 text-base font-bold tracking-tight">Feedback Signals</h2>
-          <p className="mb-4 text-xs text-muted-foreground/60">
-            Real outcomes the agent uses to retrain scoring and improve messaging
-          </p>
-          <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
-            {[
-              { label: 'Replied', value: feedback.data.repliedCount, color: 'text-zbooni-green' },
-              { label: 'Meetings', value: feedback.data.meetingBookedCount, color: 'text-zbooni-teal' },
-              { label: 'Deals Won', value: feedback.data.dealWonCount, color: 'text-purple-400' },
-              { label: 'Deals Lost', value: feedback.data.dealLostCount, color: 'text-red-400' },
-              { label: 'Unsubscribed', value: feedback.data.unsubscribedCount, color: 'text-yellow-400' },
-              { label: 'Bounced', value: feedback.data.bouncedCount, color: 'text-muted-foreground' },
-            ].map((item) => (
-              <div key={item.label}>
-                <p className="text-[11px] font-medium text-muted-foreground/60">{item.label}</p>
-                <p className={`mt-0.5 text-xl font-bold ${item.color}`}>{item.value}</p>
-              </div>
-            ))}
+      <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
+        <div className="mb-4 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-zbooni-teal" />
+          <h2 className="text-base font-bold tracking-tight">Recent Model Metrics</h2>
+        </div>
+        {metricsItems.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/50 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="py-2 pr-4">Version</th>
+                  <th className="py-2 pr-4">Split</th>
+                  <th className="py-2 pr-4">AUC</th>
+                  <th className="py-2 pr-4">PR AUC</th>
+                  <th className="py-2 pr-4">F1</th>
+                  <th className="py-2 pr-0">Evaluated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metricsItems.map((item) => (
+                  <tr key={`${item.modelVersionId}:${item.split}:${item.evaluatedAt}`} className="border-b border-border/30 last:border-0">
+                    <td className="py-2 pr-4">{item.versionTag}</td>
+                    <td className="py-2 pr-4">{item.split}</td>
+                    <td className="py-2 pr-4">{item.auc.toFixed(3)}</td>
+                    <td className="py-2 pr-4">{item.prAuc.toFixed(3)}</td>
+                    <td className="py-2 pr-4">{item.f1.toFixed(3)}</td>
+                    <td className="py-2 pr-0">{new Date(item.evaluatedAt).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground/60">No model metrics rows found yet.</p>
+        )}
+      </div>
+
+      {funnel.isLoading && !funnel.data ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-primary" />
+          Loading analytics data...
+        </div>
+      ) : null}
+
+      {!funnel.data && !funnel.isLoading && !funnel.error ? (
+        <div className="rounded-xl border border-border/30 bg-card px-4 py-3 text-sm text-muted-foreground/70">
+          No analytics data found in the current database.
         </div>
       ) : null}
     </div>
