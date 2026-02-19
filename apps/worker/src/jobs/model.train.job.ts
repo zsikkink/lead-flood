@@ -4,6 +4,7 @@ import { type Prisma, prisma } from '@lead-flood/db';
 import type PgBoss from 'pg-boss';
 import type { Job, SendOptions } from 'pg-boss';
 
+import { adjustDeterministicWeights, computeFactorLift } from '../scoring/lift-analysis.js';
 import { splitDataset, trainLogisticRegression } from '../scoring/logistic.js';
 import {
   MODEL_EVALUATE_JOB_NAME,
@@ -233,6 +234,72 @@ export async function handleModelTrainJob(
         trainedAt: new Date(),
       },
     });
+
+    // 6b. Run lift analysis and store adjusted deterministic weights
+    const convertedSnapshots: Record<string, unknown>[] = [];
+    const nonConvertedSnapshots: Record<string, unknown>[] = [];
+
+    for (const entry of labels) {
+      const snapshot = entry.lead.featureSnapshots[0];
+      if (!snapshot?.featuresJson || typeof snapshot.featuresJson !== 'object') continue;
+      const features = snapshot.featuresJson as Record<string, unknown>;
+
+      if (entry.label === 1) {
+        convertedSnapshots.push(features);
+      } else {
+        nonConvertedSnapshots.push(features);
+      }
+    }
+
+    if (convertedSnapshots.length > 0 && nonConvertedSnapshots.length > 0) {
+      const liftResults = computeFactorLift(convertedSnapshots, nonConvertedSnapshots);
+
+      // Load current deterministic weights from latest active model, or use empty defaults
+      const activeModel = await prisma.modelVersion.findFirst({
+        where: { stage: 'ACTIVE' },
+        orderBy: { activatedAt: 'desc' },
+        select: { deterministicWeightsJson: true },
+      });
+
+      const currentWeights =
+        activeModel?.deterministicWeightsJson &&
+        typeof activeModel.deterministicWeightsJson === 'object' &&
+        !Array.isArray(activeModel.deterministicWeightsJson)
+          ? (activeModel.deterministicWeightsJson as Record<string, number>)
+          : {};
+
+      if (Object.keys(currentWeights).length > 0) {
+        const adjustedWeights = adjustDeterministicWeights(currentWeights, liftResults);
+
+        await prisma.modelVersion.update({
+          where: { id: modelVersion.id },
+          data: {
+            deterministicWeightsJson: JSON.parse(JSON.stringify(adjustedWeights)) as Prisma.InputJsonValue,
+          },
+        });
+
+        logger.info(
+          {
+            jobId: job.id,
+            trainingRunId,
+            modelVersionId: modelVersion.id,
+            liftFactorsAnalyzed: liftResults.length,
+            weightsAdjusted: Object.keys(adjustedWeights).length,
+          },
+          'Lift analysis complete, deterministic weights updated on model version',
+        );
+      } else {
+        logger.info(
+          { jobId: job.id, trainingRunId },
+          'No active model with deterministic weights found, skipping lift adjustment',
+        );
+      }
+    } else {
+      logger.info(
+        { jobId: job.id, trainingRunId, converted: convertedSnapshots.length, nonConverted: nonConvertedSnapshots.length },
+        'Insufficient cohort data for lift analysis',
+      );
+    }
 
     // 7. Update TrainingRun as SUCCEEDED
     await prisma.trainingRun.update({
