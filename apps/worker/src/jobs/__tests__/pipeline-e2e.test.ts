@@ -101,37 +101,44 @@ function makePdlFetch(): typeof fetch {
 }
 
 function makeOpenAiGenerateFetch(): typeof fetch {
-  return vi.fn().mockResolvedValue(
-    new Response(
-      JSON.stringify({
-        id: 'chatcmpl-test',
-        model: 'gpt-4o',
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: 'assistant',
-              content: JSON.stringify({
-                variant_a: {
-                  subject: 'Test Email Subject A',
-                  bodyText: 'Hello from variant A',
-                  bodyHtml: '<p>Hello from variant A</p>',
-                  ctaText: 'Learn More',
-                },
-                variant_b: {
-                  subject: 'Test Email Subject B',
-                  bodyText: 'Hello from variant B',
-                  bodyHtml: '<p>Hello from variant B</p>',
-                  ctaText: null,
-                },
-              }),
+  // Return a fresh Response per call to avoid "Body has already been read" errors
+  // when message validation triggers a retry with stricter prompt.
+  // Bodies must be >= 100 chars to pass EMAIL channel minimum length validation.
+  const bodyA = 'Thank you for your interest in our payment solutions. We help businesses like yours streamline transactions and boost conversion rates across the UAE market.';
+  const bodyB = 'We noticed your company could benefit from our commerce platform. Our clients typically see a significant improvement in checkout completion within weeks.';
+  return vi.fn().mockImplementation(() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'chatcmpl-test',
+          model: 'gpt-4o',
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: JSON.stringify({
+                  variant_a: {
+                    subject: 'Test Email Subject A',
+                    bodyText: bodyA,
+                    bodyHtml: `<p>${bodyA}</p>`,
+                    ctaText: 'Learn More',
+                  },
+                  variant_b: {
+                    subject: 'Test Email Subject B',
+                    bodyText: bodyB,
+                    bodyHtml: `<p>${bodyB}</p>`,
+                    ctaText: null,
+                  },
+                }),
+              },
+              finish_reason: 'stop',
             },
-            finish_reason: 'stop',
-          },
-        ],
-        usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
-      }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
+          ],
+          usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
     ),
   ) as unknown as typeof fetch;
 }
